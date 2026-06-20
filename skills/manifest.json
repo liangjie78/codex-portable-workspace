@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "shared_skills": [
+    "tdd",
+    "diagnosing-bugs",
+    "codebase-design",
+    "ui-ux-pro-max",
+    "guizang-ppt-skill"
+  ],
+  "targets": ["codex", "claude"],
+  "notes": "Repository copies include local Windows and CC-Switch worker adaptations."
+}

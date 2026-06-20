@@ -1,0 +1,66 @@
+{
+  "name": "cc-switch-worker-mcp",
+  "version": "0.4.5-rc.1",
+  "description": "CC-Switch coding-worker MCP for Claude Code. Codex plans, delegates, and reviews; CC-Switch runs scoped code reading, editing, and checking through Claude Code with proxy-managed auth.",
+  "keywords": [
+    "mcp",
+    "cc-switch",
+    "claude-code",
+    "codex",
+    "coding-agent",
+    "proxy"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_GITHUB_USERNAME/cc-switch-worker-mcp.git"
+  },
+  "private": false,
+  "type": "module",
+  "bin": {
+    "cc-switch-worker": "bin/cc-switch-worker-mcp.mjs",
+    "cc-switch-worker-mcp": "bin/cc-switch-worker-mcp.mjs",
+    "cc-switch-worker-setup": "bin/cc-switch-worker-setup.mjs",
+    "claude-cc-switch": "bin/claude-cc-switch.mjs",
+    "claude-cc-switch-pro": "bin/claude-cc-switch.mjs",
+    "claude-cc-switch-flash": "bin/claude-cc-switch.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin/cc-switch-worker-mcp.mjs",
+    "bin/cc-switch-worker-postinstall.mjs",
+    "bin/cc-switch-worker-setup.mjs",
+    "bin/claude-cc-switch.mjs",
+    "src",
+    "scripts",
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "scripts": {
+    "postinstall": "node bin/cc-switch-worker-postinstall.mjs",
+    "mcp:cc-switch-worker": "node src/cc-switch-worker-mcp.mjs",
+    "mcp:doctor": "node src/cc-switch-worker-mcp.mjs --doctor",
+    "mcp:setup": "node src/cc-switch-worker-mcp.mjs --setup",
+    "mcp:smoke": "node scripts/smoke-cc-switch-worker-mcp.mjs",
+    "mcp:smoke:permission": "node scripts/smoke-permission-hook.mjs",
+    "mcp:smoke:restore": "node scripts/smoke-job-restore.mjs",
+    "mcp:smoke:stream": "node scripts/smoke-stream-events.mjs",
+    "mcp:smoke:observability": "node scripts/smoke-observability.mjs",
+    "mcp:smoke:diagnostics": "node scripts/smoke-diagnostics.mjs",
+    "mcp:smoke:duplicate-start": "node scripts/smoke-duplicate-start.mjs",
+    "mcp:smoke:safe-settings": "node scripts/smoke-safe-settings.mjs",
+    "mcp:smoke:required-skills": "node scripts/smoke-required-skills.mjs",
+    "mcp:smoke:context": "node scripts/smoke-context-bootstrap.mjs",
+    "mcp:smoke:partial-status": "node scripts/smoke-partial-status.mjs",
+    "mcp:smoke:policy-boundary": "node scripts/smoke-policy-boundary.mjs",
+    "mcp:smoke:tools": "node scripts/smoke-tools-list.mjs",
+    "mcp:verify:offline": "node scripts/verify-offline.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.76"
+  }
+}

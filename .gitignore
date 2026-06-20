@@ -1,0 +1,37 @@
+# Authentication and secrets
+auth.json
+*.token
+*.key
+*.pem
+.env
+.env.*
+secrets/
+credentials/
+
+# Machine and runtime state
+config.local.toml
+*.local.md
+logs/
+jobs/
+sessions/
+history/
+cache/
+.cache/
+tmp/
+temp/
+
+# Generated/runtime files
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+coverage/
+dist/
+build/
+*.log
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

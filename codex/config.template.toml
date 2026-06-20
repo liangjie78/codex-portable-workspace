@@ -1,0 +1,46 @@
+model_reasoning_effort = "medium"
+disable_response_storage = true
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+model = "gpt-5.5"
+personality = "friendly"
+
+[desktop]
+localeOverride = "zh-CN"
+conversationDetailMode = "STEPS_COMMANDS"
+show-context-window-usage = true
+composerEnterBehavior = "enter"
+hotkey-window-projectless-default-enabled = false
+appearanceTheme = "system"
+
+[windows]
+sandbox = "elevated"
+
+[projects.'{{WORKSPACE_TOML}}']
+trust_level = "trusted"
+
+[plugins."documents@openai-primary-runtime"]
+enabled = true
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = true
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = true
+
+[plugins."computer-use@openai-bundled"]
+enabled = true
+
+[plugins."pdf@openai-primary-runtime"]
+enabled = true
+
+[plugins."browser@openai-bundled"]
+enabled = true
+
+[mcp_servers.cc-switch-worker]
+command = "{{NODE_EXE_TOML}}"
+args = ["{{WORKER_ENTRY_TOML}}"]
+startup_timeout_sec = 30
+
+[features]
+js_repl = false
