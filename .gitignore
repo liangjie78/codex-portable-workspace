@@ -29,6 +29,7 @@ coverage/
 dist/
 build/
 *.log
+.portable-backup-*
 
 # Editors and OS
 .DS_Store

@@ -39,6 +39,9 @@ $forbiddenNames = @("auth.json", ".env", "credentials.json", "cookies.json")
 $files = Get-ChildItem -Recurse -File -Force -LiteralPath $repo |
     Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' }
 foreach ($file in $files) {
+    if ($file.FullName -match '[\\/]\.portable-backup-') {
+        $errors.Add("Portable backup must not be committed: $($file.FullName)")
+    }
     if ($forbiddenNames -contains $file.Name.ToLowerInvariant()) {
         $errors.Add("Forbidden filename: $($file.FullName)")
     }

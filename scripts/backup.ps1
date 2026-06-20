@@ -22,7 +22,9 @@ $manifest = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $repo "skill
 foreach ($skill in $manifest.shared_skills) {
     $source = Join-Path $ClaudeHome "skills\$skill"
     if (-not (Test-Path -LiteralPath $source)) { $source = Join-Path $CodexHome "skills\$skill" }
-    Copy-PortableItem $source (Join-Path $repo "skills\shared\$skill") -Force
+    $destination = Join-Path $repo "skills\shared\$skill"
+    if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
+    Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
 }
 Get-ChildItem -Recurse -Directory -Force -LiteralPath (Join-Path $repo "skills\shared") |
     Where-Object { $_.Name -eq "__pycache__" } |
