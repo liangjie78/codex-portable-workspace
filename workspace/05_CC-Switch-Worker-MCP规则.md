@@ -92,7 +92,7 @@ CC-Switch worker 不是最终裁决者。任何 worker 输出都必须由 Codex 
 - 明确 `forbidden_paths`
 - 明确 `checks`
 - 按任务需要传入 `required_skills`；只允许 Codex 选择已经安装到 Claude Code 的技能，不要让 worker 自行扩大技能权限。
-- 小任务显式设置较短 `timeout_ms`，优先 `180000`，如果任务略复杂但仍是小范围修改，可用 `300000`；大任务显式设置适中 `timeout_ms`，最多可用 `1200000`。
+- 小任务显式设置较短 `timeout_ms`，优先 `300000`，如果任务略复杂但仍是小范围修改，可用 `600000`；大任务显式设置适中 `timeout_ms`，最多可用 `2400000`。
 补充规则：
 
 - 当前安装的 MCP 名称是 `cc-switch-worker`，工具名前缀是 `cc_switch_*`。
