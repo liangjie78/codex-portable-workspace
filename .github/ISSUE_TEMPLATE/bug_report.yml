@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible problem in the portable workspace scripts or files.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste tokens, cookies, API keys, private logs, or full local configuration files.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What went wrong?
+      placeholder: Describe the problem in plain language.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction Steps
+      description: List the smallest steps that reproduce the issue.
+      placeholder: |
+        1. Run ...
+        2. See ...
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: Which command or script failed?
+      placeholder: .\scripts\verify.ps1
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Windows version and relevant tool versions if known.
+      placeholder: |
+        Windows:
+        PowerShell:
+        Git:
+        Node.js:
+        GitHub CLI:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized Logs
+      description: Paste only short, sanitized output. Remove secrets before posting.
+      render: text
