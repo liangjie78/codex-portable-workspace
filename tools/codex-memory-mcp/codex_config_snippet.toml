@@ -1,0 +1,28 @@
+[mcp_servers.codex-memory]
+type = "stdio"
+command = "node"
+args = ['D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp\src\server.mjs']
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+
+[mcp_servers.codex-memory.env]
+CODEX_MEMORY_ROOT = 'D:\Workspace\CodexMemory'
+
+[mcp_servers.codex-memory.tools.rag_search]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_get]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_upsert]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_finish_task]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_validate]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_reindex]
+approval_mode = "auto"

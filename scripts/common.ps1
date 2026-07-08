@@ -12,6 +12,52 @@ function Ensure-Directory {
     }
 }
 
+function Reset-PortableDirectory {
+    param([Parameter(Mandatory)][string]$Path)
+    $repo = [System.IO.Path]::GetFullPath((Get-RepositoryRoot)).TrimEnd('\')
+    $resolved = [System.IO.Path]::GetFullPath($Path)
+    $prefix = $repo + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to reset a path outside repository snapshot: $resolved"
+    }
+    if (Test-Path -LiteralPath $resolved) {
+        Remove-Item -LiteralPath $resolved -Recurse -Force
+    }
+    Ensure-Directory $resolved
+}
+
+function Get-ManifestList {
+    param(
+        [Parameter(Mandatory)][object]$Manifest,
+        [Parameter(Mandatory)][string]$PropertyName
+    )
+    if (-not ($Manifest.PSObject.Properties.Name -contains $PropertyName)) { return @() }
+    return @($Manifest.$PropertyName) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+}
+
+function Get-InstalledSkillNames {
+    param([Parameter(Mandatory)][string]$SkillsRoot)
+    if (-not (Test-Path -LiteralPath $SkillsRoot)) { return @() }
+    return @(Get-ChildItem -Directory -Force -LiteralPath $SkillsRoot |
+        Where-Object {
+            $_.Name -ne ".system" -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md"))
+        } |
+        Sort-Object Name |
+        ForEach-Object { $_.Name })
+}
+
+function Remove-SkillRuntimeArtifacts {
+    param([Parameter(Mandatory)][string]$Root)
+    if (-not (Test-Path -LiteralPath $Root)) { return }
+    Get-ChildItem -Recurse -Directory -Force -LiteralPath $Root |
+        Where-Object { $_.Name -eq "__pycache__" } |
+        Remove-Item -Recurse -Force
+    Get-ChildItem -Recurse -File -Force -LiteralPath $Root |
+        Where-Object { $_.Extension -in @(".pyc", ".pyo") } |
+        Remove-Item -Force
+}
+
 function Copy-PortableItem {
     param(
         [Parameter(Mandatory)][string]$Source,

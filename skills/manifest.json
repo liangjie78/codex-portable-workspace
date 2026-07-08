@@ -1,12 +1,34 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "shared_skills": [
+    "humanizer-zh",
     "tdd",
     "diagnosing-bugs",
     "codebase-design",
     "ui-ux-pro-max",
     "guizang-ppt-skill"
   ],
-  "targets": ["codex", "claude"],
-  "notes": "Repository copies include local Windows and CC-Switch worker adaptations."
+  "codex_skills": [
+    "bs",
+    "design-md",
+    "open-design",
+    "playwright"
+  ],
+  "claude_skills": [
+    "agent-reach"
+  ],
+  "agent_skills": [
+    "agent-reach",
+    "gitnexus-cli",
+    "gitnexus-debugging",
+    "gitnexus-exploring",
+    "gitnexus-guide",
+    "gitnexus-impact-analysis",
+    "gitnexus-pdg-query",
+    "gitnexus-pr-review",
+    "gitnexus-refactoring",
+    "gitnexus-taint-analysis"
+  ],
+  "targets": ["codex", "claude", "agents"],
+  "notes": "Repository copies include local Windows adaptations, Codex/Claude skills, .agents skills, CC-Switch worker, and CodexMemory MCP source."
 }
