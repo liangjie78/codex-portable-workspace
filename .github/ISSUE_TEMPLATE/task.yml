@@ -1,0 +1,31 @@
+name: Task
+description: Track a planned maintenance task or improvement.
+title: "[Task]: "
+labels: ["task"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should change, and why?
+      placeholder: Describe the outcome in plain language.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Which files, scripts, tools, or docs are in scope?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What must be true before this task is done?
+      placeholder: |
+        - README is updated.
+        - .\scripts\verify.ps1 passes.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks or Constraints
+      description: Mention anything that should not be changed.

@@ -1,15 +1,17 @@
 # Codex 便携工作区
 
-这是一个私有、受 Git 版本控制的配置仓库，用于在 Windows 新电脑上重新搭建个人 Codex + Claude Code 工作区。
+这是一个公开、受 Git 版本控制的个人便携工作区模板仓库，用于在 Windows 新电脑上重新搭建 Codex + Claude Code 工作区。
+
+本仓库公开的是可迁移的规则、技能快照、工具源码和安装脚本，不包含登录状态、令牌、Cookie、缓存、会话记录或本机知识库数据。使用前请先阅读脚本和安全说明，再按自己的机器路径调整配置。
 
 ## 可以恢复什么
 
-- Codex 全局 `AGENTS.md`
-- Workspace 工作流与协作规则
-- Codex、Claude Code 和 `.agents` skills 快照
-- 定制版 CC-Switch worker 源码
-- CodexMemory MCP / CLI 源码
-- 由脚本安全生成的 `config.toml`
+- Codex 全局 `AGENTS.md`。
+- Workspace 工作流与协作规则。
+- Codex、Claude Code 和 `.agents` skills 快照。
+- 定制版 CC-Switch worker 源码。
+- CodexMemory MCP / CLI 源码。
+- 由脚本安全生成的 `config.toml`。
 
 本仓库不会恢复登录状态、令牌、Cookie、缓存、对话记录、worker 任务或 `D:\Workspace\CodexMemory` 中的本机记忆数据。CodexMemory MCP 是可迁移工具层；知识库内容只在本机维护。
 
@@ -27,12 +29,12 @@ cd codex-portable-workspace
 默认安装位置如下：
 
 ```text
-Codex home: %USERPROFILE%\.codex
-Claude home: %USERPROFILE%\.claude
-Agents home: %USERPROFILE%\.agents
-Workspace: D:\Workspace
-Worker source: D:\Workspace\Tools\cc-switch-worker-mcp
-CodexMemory MCP source: D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp
+Codex home:                 %USERPROFILE%\.codex
+Claude home:                %USERPROFILE%\.claude
+Agents home:                %USERPROFILE%\.agents
+Workspace:                  D:\Workspace
+Worker source:              D:\Workspace\Tools\cc-switch-worker-mcp
+CodexMemory MCP source:     D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp
 CodexMemory local knowledge root: D:\Workspace\CodexMemory
 ```
 
@@ -53,3 +55,9 @@ git diff
 ## 安全机制
 
 备份脚本只复制固定白名单内的文件；`.gitignore` 提供第二层防护；`verify.ps1` 会拒绝已知的敏感文件名和常见凭据格式。请勿手动添加 `.codex\auth.json`、`.env`、API 密钥、Cookie、日志、会话数据、临时任务数据或 CodexMemory 本机知识库内容。
+
+如果发现疑似敏感信息，请不要在公开 Issue 中粘贴密钥、token 或完整日志，按 `SECURITY.md` 中的方式处理。
+
+## 许可证
+
+本仓库使用 MIT License，详见 `LICENSE`。
