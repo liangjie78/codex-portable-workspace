@@ -12,12 +12,17 @@
 
 ## 现在装了哪些插件
 
-| 插件 | 大白话说明 |
-| --- | --- |
-| `openai-bundled` | Codex 自带的一组能力，包括浏览器操作、Windows 应用操作和网站构建。|
-| `openai-curated-remote` | 已连接服务的能力包，目前包含 GitHub 和 Google Drive 相关功能；使用前可能需要登录或授权。|
-| `openai-primary-runtime` | 用来处理 Word、PDF、演示文稿和表格的运行环境。|
-| `ponytail` | 提醒 Codex 少造轮子：能用现成能力解决就别写一大套新代码。|
+| 插件来源 | 已安装插件 | 大白话说明 |
+| --- | --- | --- |
+| `openai-bundled` | `browser`、`chrome`、`computer-use` | 操作 Codex 内置浏览器、Chrome 或 Windows 应用。|
+| `openai-bundled` | `sites`、`visualize` | 搭网站，或把想法和数据做成可交互图表、小工具。|
+| `openai-curated` | `github` | 看仓库、PR、Issue 和 CI；需要写入时会走 GitHub 授权。|
+| `openai-curated` | `hyperframes` | 用 HTML、动画和字幕做视频。|
+| `openai-curated-remote` | `github`、`google-drive` | 通过已连接账号处理 GitHub，或操作 Drive、Docs、Sheets、Slides。|
+| `openai-curated-remote` | `openai-templates` | 提供文档、表格和演示文稿的默认模板。|
+| `openai-primary-runtime` | `documents`、`pdf`、`presentations` | 创建、修改和检查 Word、PDF、PowerPoint 一类文件。|
+| `openai-primary-runtime` | `spreadsheets`、`template-creator` | 处理 Excel/CSV，或把现有文件整理成可复用模板。|
+| `ponytail` | `ponytail` | 提醒 Codex 少造轮子：能用现成能力解决就别写一大套新代码。|
 
 插件是 Codex 程序的一部分，仓库会记录这份说明和可迁移的配置/技能，不会复制登录状态或个人授权。
 
