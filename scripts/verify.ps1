@@ -66,6 +66,7 @@ foreach ($path in @(
     "scripts\install.ps1",
     "scripts\backup.ps1",
     "scripts\verify.ps1",
+    "workspace\02_Codex用户使用说明.md",
     "tools\cc-switch-worker-mcp\src\cc-switch-worker-mcp.mjs",
     "tools\codex-memory-mcp\src\server.mjs",
     "tools\codex-memory-mcp\src\cli.mjs",
@@ -104,7 +105,7 @@ if ($inventoryTemplates.Count -ne 1) {
     $errors.Add("Expected one workspace inventory template prefix 00_; found $($inventoryTemplates.Count)")
 }
 
-foreach ($prefix in @("01_", "04_", "05_")) {
+foreach ($prefix in @("01_", "02_", "04_", "05_")) {
     $matches = @(Get-ChildItem -File -LiteralPath (Join-Path $repo "workspace") |
         Where-Object { $_.Name.StartsWith($prefix, [System.StringComparison]::Ordinal) })
     if ($matches.Count -ne 1) {
@@ -144,6 +145,7 @@ if (Test-Path -LiteralPath $manifestPath) {
     if ($CheckInstalled) {
         Require-Path (Join-Path $CodexHome "AGENTS.md")
         Require-Path (Join-Path $CodexHome "config.toml")
+        Require-Path (Join-Path $WorkspaceRoot "02_Codex用户使用说明.md")
         Require-Path (Join-Path $WorkerRoot "src\cc-switch-worker-mcp.mjs")
         Require-Path (Join-Path $CodexMemoryMcpRoot "src\server.mjs")
 

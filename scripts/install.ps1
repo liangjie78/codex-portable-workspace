@@ -61,7 +61,7 @@ if ($PSCmdlet.ShouldProcess($CodexHome, "Install Codex global guidance")) {
     Write-Utf8NoBom $agentsTarget $agents
 }
 
-foreach ($prefix in @("01_", "04_", "05_")) {
+foreach ($prefix in @("01_", "02_", "04_", "05_")) {
     $sourceMatches = @(Get-ChildItem -File -LiteralPath (Join-Path $repo "workspace") |
         Where-Object { $_.Name.StartsWith($prefix, [System.StringComparison]::Ordinal) })
     if ($sourceMatches.Count -ne 1) {

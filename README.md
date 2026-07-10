@@ -8,6 +8,7 @@
 
 - Codex 全局 `AGENTS.md`。
 - Workspace 工作流与协作规则。
+- 面向实际使用者的插件、Skills 与 MCP 使用说明。
 - Codex、Claude Code 和 `.agents` skills 快照。
 - 定制版 CC-Switch worker 源码。
 - CodexMemory MCP / CLI 源码。
@@ -51,6 +52,8 @@ git diff
 ```
 
 `backup.ps1` 会自动刷新白名单快照并运行安装态覆盖面审计。如果本机新增了 skill 或 CodexMemory MCP 源码路径缺失，但 `skills\manifest.json` 或工具白名单没有更新，脚本会失败并点名漏项。提交并推送前，请先检查 `git diff` 显示的改动。
+
+日常使用可先看 `D:\Workspace\02_Codex用户使用说明.md`。它解释当前安装的插件、Skills 与 MCP 各自做什么；每次自动同步前都会按本机状态更新，并随备份进入仓库。
 
 ## 安全机制
 
