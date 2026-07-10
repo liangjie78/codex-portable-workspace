@@ -45,10 +45,11 @@ try {
     clientInfo: { name: "codex-memory-smoke", version: "1.0.0" },
   });
   assert(initialized.serverInfo.name === "codex-memory-mcp", "initialize returned wrong server name");
+  assert(initialized.serverInfo.version === "0.9.0", "initialize returned wrong server version");
 
   const listed = await request("tools/list", {});
   const names = listed.tools.map((tool) => tool.name).sort();
-  for (const expected of ["rag_finish_task", "rag_get", "rag_reindex", "rag_search", "rag_upsert", "rag_validate"]) {
+  for (const expected of ["rag_brief", "rag_finish_task", "rag_get", "rag_health", "rag_maintenance_plan", "rag_mark_verified", "rag_reindex", "rag_search", "rag_snapshot", "rag_upsert", "rag_validate"]) {
     assert(names.includes(expected), `missing tool ${expected}`);
   }
 
@@ -61,6 +62,7 @@ try {
     status: "active",
     confidence: "high",
     tags: ["smoke", "mcp"],
+    aliases: ["temporary MCP proof card"],
     source_path: "smoke-test",
     source_section: "scripts/smoke.mjs",
     body: "## Problem\nNeed to prove MCP tools work.\n\n## Solution\nUpsert, search, get, validate and reindex in a temporary root.",
@@ -74,14 +76,29 @@ try {
   const searched = await callTool("rag_search", { query: "prove MCP tools", limit: 3, format: "json" });
   assert(searched.results.some((result) => result.id === card.id), "rag_search did not find smoke card");
 
+  const aliasSearch = await callTool("rag_search", { query: "temporary MCP proof card", limit: 3, format: "json" });
+  assert(aliasSearch.results[0]?.id === card.id, "rag_search did not rank alias match first");
+
+  const brief = await callTool("rag_brief", { query: "temporary MCP proof card", limit: 3, format: "json" });
+  assert(brief.results[0]?.id === card.id, "rag_brief did not include the relevant card");
+
+  const plan = await callTool("rag_maintenance_plan", { format: "json" });
+  assert(Array.isArray(plan.suggestions), "rag_maintenance_plan did not return suggestions");
+
   const got = await callTool("rag_get", { id: card.id });
   assert(got.card.id === card.id, "rag_get returned wrong card");
+
+  const verified = await callTool("rag_mark_verified", { id: card.id, last_verified_at: "2026-07-10" });
+  assert(verified.ok === true && verified.last_verified_at === "2026-07-10", "rag_mark_verified failed");
 
   const validated = await callTool("rag_validate", {});
   assert(validated.ok === true, "rag_validate failed");
 
   const indexed = await callTool("rag_reindex", {});
   assert(indexed.ok === true && indexed.card_count === 1, "rag_reindex failed");
+
+  const health = await callTool("rag_health", {});
+  assert(health.ok === true && health.index.state === "current", "rag_health failed");
 
   const finished = await callTool("rag_finish_task", {
     task_summary: "Smoke test completed.",
@@ -100,6 +117,9 @@ try {
     ],
   });
   assert(finished.ok === true && finished.written.length === 1, "rag_finish_task failed");
+
+  const snapshot = await callTool("rag_snapshot", { label: "smoke" });
+  assert(snapshot.ok === true && snapshot.file_count > 0, "rag_snapshot failed");
 
   console.log(JSON.stringify({ ok: true, tempRoot, tools: names }, null, 2));
 } finally {

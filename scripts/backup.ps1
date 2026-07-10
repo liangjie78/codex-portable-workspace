@@ -75,7 +75,7 @@ foreach ($relative in @(".gitignore", "package.json", "package-lock.json", "READ
 
 $memoryDestination = Join-Path $repo "tools\codex-memory-mcp"
 Reset-PortableDirectory $memoryDestination
-foreach ($relative in @(".gitignore", "package.json", "README.md", "codex_config_snippet.toml", "docs", "src", "scripts")) {
+foreach ($relative in @(".gitignore", "package.json", "README.md", "codex_config_snippet.toml", "docs", "src", "scripts", "test")) {
     $source = Join-Path $CodexMemoryMcpRoot $relative
     if (Test-Path -LiteralPath $source) {
         Copy-Item -LiteralPath $source -Destination $memoryDestination -Recurse -Force

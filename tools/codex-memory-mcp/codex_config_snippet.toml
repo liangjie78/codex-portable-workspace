@@ -2,7 +2,9 @@
 type = "stdio"
 command = "node"
 args = ['D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp\src\server.mjs']
+cwd = 'D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp'
 enabled = true
+enabled_tools = ["rag_search", "rag_brief", "rag_maintenance_plan", "rag_get", "rag_upsert", "rag_finish_task", "rag_validate", "rag_health", "rag_mark_verified", "rag_snapshot", "rag_reindex"]
 startup_timeout_sec = 30
 tool_timeout_sec = 120
 
@@ -10,6 +12,12 @@ tool_timeout_sec = 120
 CODEX_MEMORY_ROOT = 'D:\Workspace\CodexMemory'
 
 [mcp_servers.codex-memory.tools.rag_search]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_brief]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_maintenance_plan]
 approval_mode = "auto"
 
 [mcp_servers.codex-memory.tools.rag_get]
@@ -22,6 +30,15 @@ approval_mode = "auto"
 approval_mode = "auto"
 
 [mcp_servers.codex-memory.tools.rag_validate]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_health]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_mark_verified]
+approval_mode = "auto"
+
+[mcp_servers.codex-memory.tools.rag_snapshot]
 approval_mode = "auto"
 
 [mcp_servers.codex-memory.tools.rag_reindex]

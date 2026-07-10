@@ -17,16 +17,27 @@ for (const item of cases) {
   const search = await searchCards({ query: item.query, limit: 3 }, root);
   const topIds = search.results.map((result) => result.id);
   const expected = item.expected_ids ?? [];
-  const hit = expected.some((id) => topIds.includes(id));
-  results.push({ query: item.query, expected_ids: expected, top_ids: topIds, hit });
+  const ranks = expected.map((id) => topIds.indexOf(id) + 1).filter((rank) => rank > 0);
+  const best_rank = ranks.length > 0 ? Math.min(...ranks) : null;
+  const hit = best_rank !== null;
+  results.push({ query: item.query, expected_ids: expected, top_ids: topIds, best_rank, hit });
 }
 
 const passed = results.filter((item) => item.hit).length;
+const top1 = results.filter((item) => item.best_rank === 1).length;
+const mrr = results.length
+  ? results.reduce((total, item) => total + (item.best_rank ? 1 / item.best_rank : 0), 0) / results.length
+  : 0;
 const report = {
   root,
   ok: passed === results.length,
   passed,
   total: results.length,
+  metrics: {
+    top1,
+    top1_rate: results.length ? top1 / results.length : 0,
+    mean_reciprocal_rank: mrr,
+  },
   results,
 };
 

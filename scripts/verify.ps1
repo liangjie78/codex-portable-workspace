@@ -69,7 +69,9 @@ foreach ($path in @(
     "tools\cc-switch-worker-mcp\src\cc-switch-worker-mcp.mjs",
     "tools\codex-memory-mcp\src\server.mjs",
     "tools\codex-memory-mcp\src\cli.mjs",
-    "tools\codex-memory-mcp\src\cardStore.mjs"
+    "tools\codex-memory-mcp\src\cardStore.mjs",
+    "tools\codex-memory-mcp\test\cardStore.test.mjs",
+    "tools\codex-memory-mcp\test\server.test.mjs"
 )) {
     Require-RepoPath $path
 }
@@ -82,6 +84,14 @@ if (Test-Path -LiteralPath $templatePath) {
     }
     if (-not $template.Contains("codex-memory")) {
         $errors.Add("Config template missing codex-memory MCP block")
+    }
+    foreach ($tool in @("rag_search", "rag_brief", "rag_maintenance_plan", "rag_get", "rag_upsert", "rag_finish_task", "rag_validate", "rag_health", "rag_mark_verified", "rag_snapshot", "rag_reindex")) {
+        if (-not $template.Contains($tool)) {
+            $errors.Add("Config template missing CodexMemory tool: $tool")
+        }
+    }
+    if (-not $template.Contains("openaiDeveloperDocs")) {
+        $errors.Add("Config template missing OpenAI Developer Docs MCP block")
     }
 }
 

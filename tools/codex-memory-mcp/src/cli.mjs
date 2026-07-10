@@ -2,7 +2,14 @@
 import { readFile } from "node:fs/promises";
 import {
   formatSearchResults,
+  formatMaintenancePlan,
+  formatTaskBrief,
+  createSnapshot,
+  createMaintenancePlan,
+  createTaskBrief,
   getCard,
+  getStoreHealth,
+  markCardVerified,
   recordTaskCompletion,
   reindex,
   resolveMemoryRoot,
@@ -23,15 +30,45 @@ try {
     const result = await searchCards({ query, ...options }, options.root);
     if (options.json || options.format === "json") printJson(result);
     else console.log(formatSearchResults(result));
+  } else if (command === "brief") {
+    const query = collectQuery(args);
+    const options = parseOptions(args);
+    const result = await createTaskBrief({ query, ...options }, options.root);
+    if (options.json || options.format === "json") printJson(result);
+    else console.log(formatTaskBrief(result, options));
+    if (!result.ok) process.exitCode = 1;
+  } else if (command === "maintenance-plan") {
+    const options = parseOptions(args);
+    const result = await createMaintenancePlan(options, options.root);
+    if (options.json || options.format === "json") printJson(result);
+    else console.log(formatMaintenancePlan(result));
+    if (!result.ok) process.exitCode = 1;
   } else if (command === "get") {
     const id = args.shift();
     if (!id) throw new Error("get requires an id");
     const options = parseOptions(args);
     const result = await getCard(id, options.root);
     printJson(result);
+  } else if (command === "verify") {
+    const id = args.shift();
+    if (!id) throw new Error("verify requires an id");
+    const options = parseOptions(args);
+    const result = await markCardVerified(id, { last_verified_at: options.date, status: options.status }, options.root);
+    printJson(result);
+    if (!result.ok) process.exitCode = 1;
   } else if (command === "validate") {
     const options = parseOptions(args);
     const result = await validateStore(options.root);
+    printJson(result);
+    if (!result.ok) process.exitCode = 1;
+  } else if (command === "health") {
+    const options = parseOptions(args);
+    const result = await getStoreHealth(options.root);
+    printJson(result);
+    if (!result.ok) process.exitCode = 1;
+  } else if (command === "snapshot") {
+    const options = parseOptions(args);
+    const result = await createSnapshot({ label: options.label }, options.root);
     printJson(result);
     if (!result.ok) process.exitCode = 1;
   } else if (command === "reindex") {
@@ -70,10 +107,17 @@ function printHelp() {
   console.log(`codex-memory commands:
   search <query> [--limit N] [--type TYPE] [--tags a,b] [--project NAME] [--root PATH]
   search <query> --json
+  brief <query> [--limit N] [--project NAME] [--include-deprecated true] [--root PATH]
+  brief <query> --json
+  maintenance-plan [--limit N] [--root PATH]
+  maintenance-plan --json
   get <id> [--root PATH]
+  verify <id> [--date YYYY-MM-DD] [--status STATUS] [--root PATH]
   upsert <card.json> [--root PATH]
   finish <task-completion.json> [--root PATH]
   validate [--root PATH]
+  health [--root PATH]
+  snapshot [--label TEXT] [--root PATH]
   reindex [--root PATH]
   root [--root PATH]
 `);

@@ -154,6 +154,7 @@ $config = $template.Replace("{{WORKSPACE_TOML}}", (Convert-ToTomlPath $Workspace
 $config = $config.Replace("{{NODE_EXE_TOML}}", (Convert-ToTomlPath $NodeExe))
 $config = $config.Replace("{{WORKER_ENTRY_TOML}}", (Convert-ToTomlPath (Join-Path $WorkerRoot "src\cc-switch-worker-mcp.mjs")))
 $config = $config.Replace("{{CODEX_MEMORY_ENTRY_TOML}}", (Convert-ToTomlPath (Join-Path $CodexMemoryMcpRoot "src\server.mjs")))
+$config = $config.Replace("{{CODEX_MEMORY_MCP_ROOT_TOML}}", (Convert-ToTomlPath $CodexMemoryMcpRoot))
 $config = $config.Replace("{{CODEX_MEMORY_ROOT_TOML}}", (Convert-ToTomlPath $CodexMemoryRoot))
 
 if ($PSCmdlet.ShouldProcess((Join-Path $CodexHome "config.toml"), "Install Codex config template")) {
