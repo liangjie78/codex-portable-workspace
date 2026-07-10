@@ -6,8 +6,8 @@ param(
     [string]$ClaudeHome = (Join-Path $HOME ".claude"),
     [string]$AgentsHome = (Join-Path $HOME ".agents"),
     [string]$WorkspaceRoot = "D:\Workspace",
-    [string]$WorkerRoot = "D:\Workspace\Tools\cc-switch-worker-mcp",
-    [string]$CodexMemoryMcpRoot = "D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp"
+    [string]$WorkerRoot = "D:\Workspace\MCP\cc-switch-worker-mcp",
+    [string]$CodexMemoryMcpRoot = "D:\Workspace\MCP\codex-memory-mcp"
 )
 
 . (Join-Path $PSScriptRoot "common.ps1")
@@ -66,7 +66,6 @@ foreach ($path in @(
     "scripts\install.ps1",
     "scripts\backup.ps1",
     "scripts\verify.ps1",
-    "workspace\02_Codex用户使用说明.md",
     "tools\cc-switch-worker-mcp\src\cc-switch-worker-mcp.mjs",
     "tools\codex-memory-mcp\src\server.mjs",
     "tools\codex-memory-mcp\src\cli.mjs",
@@ -145,7 +144,11 @@ if (Test-Path -LiteralPath $manifestPath) {
     if ($CheckInstalled) {
         Require-Path (Join-Path $CodexHome "AGENTS.md")
         Require-Path (Join-Path $CodexHome "config.toml")
-        Require-Path (Join-Path $WorkspaceRoot "02_Codex用户使用说明.md")
+        $userGuideMatches = @(Get-ChildItem -File -LiteralPath $WorkspaceRoot |
+            Where-Object { $_.Name.StartsWith("02_", [System.StringComparison]::Ordinal) })
+        if ($userGuideMatches.Count -ne 1) {
+            $errors.Add("Expected one installed workspace user guide prefix 02_; found $($userGuideMatches.Count)")
+        }
         Require-Path (Join-Path $WorkerRoot "src\cc-switch-worker-mcp.mjs")
         Require-Path (Join-Path $CodexMemoryMcpRoot "src\server.mjs")
 

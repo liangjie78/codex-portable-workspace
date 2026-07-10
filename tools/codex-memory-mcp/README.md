@@ -10,7 +10,7 @@ This package is the reproducible tool layer. It does not contain this computer's
 D:\Workspace\CodexMemory
   Local knowledge base for this machine only.
 
-D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp
+D:\Workspace\MCP\codex-memory-mcp
   Portable MCP and CLI source code.
 ```
 

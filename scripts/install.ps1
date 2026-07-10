@@ -21,10 +21,10 @@ $AgentsHome = [System.IO.Path]::GetFullPath($AgentsHome)
 $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 
 if (-not $WorkerRoot) {
-    $WorkerRoot = Join-Path $WorkspaceRoot "Tools\cc-switch-worker-mcp"
+    $WorkerRoot = Join-Path $WorkspaceRoot "MCP\cc-switch-worker-mcp"
 }
 if (-not $CodexMemoryMcpRoot) {
-    $CodexMemoryMcpRoot = Join-Path $WorkspaceRoot "Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp"
+    $CodexMemoryMcpRoot = Join-Path $WorkspaceRoot "MCP\codex-memory-mcp"
 }
 if (-not $CodexMemoryRoot) {
     $CodexMemoryRoot = Join-Path $WorkspaceRoot "CodexMemory"

@@ -34,8 +34,8 @@ Codex home:                 %USERPROFILE%\.codex
 Claude home:                %USERPROFILE%\.claude
 Agents home:                %USERPROFILE%\.agents
 Workspace:                  D:\Workspace
-Worker source:              D:\Workspace\Tools\cc-switch-worker-mcp
-CodexMemory MCP source:     D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp
+Worker source:              D:\Workspace\MCP\cc-switch-worker-mcp
+CodexMemory MCP source:     D:\Workspace\MCP\codex-memory-mcp
 CodexMemory local knowledge root: D:\Workspace\CodexMemory
 ```
 

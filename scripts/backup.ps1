@@ -4,8 +4,8 @@ param(
     [string]$ClaudeHome = (Join-Path $HOME ".claude"),
     [string]$AgentsHome = (Join-Path $HOME ".agents"),
     [string]$WorkspaceRoot = "D:\Workspace",
-    [string]$WorkerRoot = "D:\Workspace\Tools\cc-switch-worker-mcp",
-    [string]$CodexMemoryMcpRoot = "D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp"
+    [string]$WorkerRoot = "D:\Workspace\MCP\cc-switch-worker-mcp",
+    [string]$CodexMemoryMcpRoot = "D:\Workspace\MCP\codex-memory-mcp"
 )
 
 . (Join-Path $PSScriptRoot "common.ps1")

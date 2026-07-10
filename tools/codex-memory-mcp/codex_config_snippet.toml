@@ -1,8 +1,8 @@
 [mcp_servers.codex-memory]
 type = "stdio"
 command = "node"
-args = ['D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp\src\server.mjs']
-cwd = 'D:\Workspace\Projects\Project-013-CodexMemory\03_Source\codex-memory-mcp'
+args = ['D:\Workspace\MCP\codex-memory-mcp\src\server.mjs']
+cwd = 'D:\Workspace\MCP\codex-memory-mcp'
 enabled = true
 enabled_tools = ["rag_search", "rag_brief", "rag_maintenance_plan", "rag_get", "rag_upsert", "rag_finish_task", "rag_validate", "rag_health", "rag_mark_verified", "rag_snapshot", "rag_reindex"]
 startup_timeout_sec = 30
