@@ -4,7 +4,7 @@ This repository contains portable workspace configuration, installation scripts,
 
 ## Supported Usage
 
-The public repository is intended to store portable, reviewable files only. It must not contain local authentication state, tokens, cookies, machine caches, chat/session history, worker job data, or private CodexMemory knowledge data.
+The public repository is intended to store portable, reviewable files only. It must not contain local authentication state, tokens, cookies, machine caches, chat/session history, worker job data, or private machine memory data.
 
 Before running the installation scripts on a new machine, read the script changes and adjust paths for your own environment.
 
@@ -17,7 +17,7 @@ Do not commit or paste:
 - API keys, access tokens, refresh tokens, cookies, or passwords
 - private keys or certificates
 - production service URLs with credentials
-- local logs, caches, sessions, worker jobs, or CodexMemory knowledge files
+- local logs, caches, sessions, worker jobs, or machine memory files
 
 Use `templates/local-secrets.example.ps1` as a shape-only example, then keep any populated secrets file outside the repository.
 

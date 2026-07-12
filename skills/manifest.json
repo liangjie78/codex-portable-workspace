@@ -30,5 +30,5 @@
     "gitnexus-taint-analysis"
   ],
   "targets": ["codex", "claude", "agents"],
-  "notes": "Repository copies include local Windows adaptations, Codex/Claude skills, .agents skills, CC-Switch worker, and CodexMemory MCP source."
+  "notes": "Repository copies include local Windows adaptations, Codex/Claude skills, .agents skills, and CC-Switch worker source."
 }

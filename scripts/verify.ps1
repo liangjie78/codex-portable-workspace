@@ -6,8 +6,7 @@ param(
     [string]$ClaudeHome = (Join-Path $HOME ".claude"),
     [string]$AgentsHome = (Join-Path $HOME ".agents"),
     [string]$WorkspaceRoot = "D:\Workspace",
-    [string]$WorkerRoot = "D:\Workspace\MCP\cc-switch-worker-mcp",
-    [string]$CodexMemoryMcpRoot = "D:\Workspace\MCP\codex-memory-mcp"
+    [string]$WorkerRoot = "D:\Workspace\MCP\cc-switch-worker-mcp"
 )
 
 . (Join-Path $PSScriptRoot "common.ps1")
@@ -66,12 +65,7 @@ foreach ($path in @(
     "scripts\install.ps1",
     "scripts\backup.ps1",
     "scripts\verify.ps1",
-    "tools\cc-switch-worker-mcp\src\cc-switch-worker-mcp.mjs",
-    "tools\codex-memory-mcp\src\server.mjs",
-    "tools\codex-memory-mcp\src\cli.mjs",
-    "tools\codex-memory-mcp\src\cardStore.mjs",
-    "tools\codex-memory-mcp\test\cardStore.test.mjs",
-    "tools\codex-memory-mcp\test\server.test.mjs"
+    "tools\cc-switch-worker-mcp\src\cc-switch-worker-mcp.mjs"
 )) {
     Require-RepoPath $path
 }
@@ -81,14 +75,6 @@ if (Test-Path -LiteralPath $templatePath) {
     $template = [System.IO.File]::ReadAllText($templatePath)
     if (-not $template.Contains("cc-switch-worker")) {
         $errors.Add("Config template missing cc-switch-worker MCP block")
-    }
-    if (-not $template.Contains("codex-memory")) {
-        $errors.Add("Config template missing codex-memory MCP block")
-    }
-    foreach ($tool in @("rag_search", "rag_brief", "rag_maintenance_plan", "rag_get", "rag_upsert", "rag_finish_task", "rag_validate", "rag_health", "rag_mark_verified", "rag_snapshot", "rag_reindex")) {
-        if (-not $template.Contains($tool)) {
-            $errors.Add("Config template missing CodexMemory tool: $tool")
-        }
     }
     if (-not $template.Contains("openaiDeveloperDocs")) {
         $errors.Add("Config template missing OpenAI Developer Docs MCP block")
@@ -137,8 +123,6 @@ if (Test-Path -LiteralPath $manifestPath) {
         Add-SkillCoverageErrors "Codex" (Join-Path $CodexHome "skills") @($sharedSkills + $codexSkills)
         Add-SkillCoverageErrors "Claude" (Join-Path $ClaudeHome "skills") @($sharedSkills + $claudeSkills)
         Add-SkillCoverageErrors "Agents" (Join-Path $AgentsHome "skills") @($agentSkills)
-        Require-Path (Join-Path $CodexMemoryMcpRoot "src\server.mjs")
-        Require-Path (Join-Path $CodexMemoryMcpRoot "src\cli.mjs")
     }
 
     if ($CheckInstalled) {
@@ -150,7 +134,6 @@ if (Test-Path -LiteralPath $manifestPath) {
             $errors.Add("Expected one installed workspace user guide prefix 02_; found $($userGuideMatches.Count)")
         }
         Require-Path (Join-Path $WorkerRoot "src\cc-switch-worker-mcp.mjs")
-        Require-Path (Join-Path $CodexMemoryMcpRoot "src\server.mjs")
 
         foreach ($skill in $sharedSkills) {
             Require-Path (Join-Path $CodexHome "skills\$skill\SKILL.md")
@@ -169,9 +152,6 @@ if (Test-Path -LiteralPath $manifestPath) {
         $configPath = Join-Path $CodexHome "config.toml"
         if (Test-Path -LiteralPath $configPath) {
             $config = [System.IO.File]::ReadAllText($configPath)
-            if (-not $config.Contains("codex-memory")) {
-                $errors.Add("Codex config missing codex-memory MCP block")
-            }
             if ($config.Contains("{{")) {
                 $errors.Add("Codex config still contains unresolved template placeholders")
             }

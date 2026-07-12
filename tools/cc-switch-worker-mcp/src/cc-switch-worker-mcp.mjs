@@ -43,6 +43,7 @@ import {
   MAX_FILE_BYTES,
   MAX_OUTPUT_CHARS,
   MAX_STREAM_EVENTS,
+  PACKAGE_ROOT,
   SELF_SCRIPT,
   SERVER_VERSION,
   USE_CASES,
@@ -488,7 +489,7 @@ function inspectCodexRegistration() {
   }
 
   const actualPath = resolve(registeredPath);
-  const ok = samePath(actualPath, expectedPath);
+  const ok = samePath(actualPath, expectedPath) || isInsidePackage(actualPath);
   return {
     ok,
     config_path: configPath,
@@ -542,7 +543,7 @@ function inspectCcSwitchMcpProcesses() {
     return {
       pid: row.ProcessId ?? null,
       script_path: scriptPath ? resolve(scriptPath) : null,
-      matches_this_server: scriptPath ? samePath(scriptPath, expectedPath) : false,
+      matches_this_server: scriptPath ? (samePath(scriptPath, expectedPath) || isInsidePackage(scriptPath)) : false,
     };
   });
   const mismatches = processes.filter((item) => item.script_path && !item.matches_this_server);
@@ -604,6 +605,11 @@ function parsePowershellJsonRows(stdout) {
 
 function samePath(a, b) {
   return canonicalPathKey(a) === canonicalPathKey(b);
+}
+
+function isInsidePackage(path) {
+  const rel = relative(PACKAGE_ROOT, resolve(path));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
 function canonicalPathKey(path) {

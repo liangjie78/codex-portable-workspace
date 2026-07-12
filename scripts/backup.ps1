@@ -4,8 +4,7 @@ param(
     [string]$ClaudeHome = (Join-Path $HOME ".claude"),
     [string]$AgentsHome = (Join-Path $HOME ".agents"),
     [string]$WorkspaceRoot = "D:\Workspace",
-    [string]$WorkerRoot = "D:\Workspace\MCP\cc-switch-worker-mcp",
-    [string]$CodexMemoryMcpRoot = "D:\Workspace\MCP\codex-memory-mcp"
+    [string]$WorkerRoot = "D:\Workspace\MCP\cc-switch-worker-mcp"
 )
 
 . (Join-Path $PSScriptRoot "common.ps1")
@@ -73,23 +72,13 @@ foreach ($relative in @(".gitignore", "package.json", "package-lock.json", "READ
     }
 }
 
-$memoryDestination = Join-Path $repo "tools\codex-memory-mcp"
-Reset-PortableDirectory $memoryDestination
-foreach ($relative in @(".gitignore", "package.json", "README.md", "codex_config_snippet.toml", "docs", "src", "scripts", "test")) {
-    $source = Join-Path $CodexMemoryMcpRoot $relative
-    if (Test-Path -LiteralPath $source) {
-        Copy-Item -LiteralPath $source -Destination $memoryDestination -Recurse -Force
-    }
-}
-
 & (Join-Path $PSScriptRoot "verify.ps1") `
     -AuditInstalledCoverage `
     -CodexHome $CodexHome `
     -ClaudeHome $ClaudeHome `
     -AgentsHome $AgentsHome `
     -WorkspaceRoot $WorkspaceRoot `
-    -WorkerRoot $WorkerRoot `
-    -CodexMemoryMcpRoot $CodexMemoryMcpRoot
+    -WorkerRoot $WorkerRoot
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

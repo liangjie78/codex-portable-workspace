@@ -5,8 +5,6 @@ param(
     [string]$AgentsHome = (Join-Path $HOME ".agents"),
     [string]$WorkspaceRoot = "D:\Workspace",
     [string]$WorkerRoot = "",
-    [string]$CodexMemoryMcpRoot = "",
-    [string]$CodexMemoryRoot = "",
     [string]$NodeExe = "",
     [switch]$Force,
     [switch]$InstallWorkerDependencies
@@ -23,16 +21,7 @@ $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 if (-not $WorkerRoot) {
     $WorkerRoot = Join-Path $WorkspaceRoot "MCP\cc-switch-worker-mcp"
 }
-if (-not $CodexMemoryMcpRoot) {
-    $CodexMemoryMcpRoot = Join-Path $WorkspaceRoot "MCP\codex-memory-mcp"
-}
-if (-not $CodexMemoryRoot) {
-    $CodexMemoryRoot = Join-Path $WorkspaceRoot "CodexMemory"
-}
-
 $WorkerRoot = [System.IO.Path]::GetFullPath($WorkerRoot)
-$CodexMemoryMcpRoot = [System.IO.Path]::GetFullPath($CodexMemoryMcpRoot)
-$CodexMemoryRoot = [System.IO.Path]::GetFullPath($CodexMemoryRoot)
 
 if (-not $NodeExe) {
     $node = Get-Command node -ErrorAction SilentlyContinue
@@ -47,7 +36,6 @@ Ensure-Directory $CodexHome
 Ensure-Directory $ClaudeHome
 Ensure-Directory $AgentsHome
 Ensure-Directory $WorkspaceRoot
-Ensure-Directory $CodexMemoryRoot
 
 if ($PSCmdlet.ShouldProcess($CodexHome, "Install Codex global guidance")) {
     $agentsTarget = Join-Path $CodexHome "AGENTS.md"
@@ -145,17 +133,10 @@ if ($InstallWorkerDependencies) {
     }
 }
 
-if ($PSCmdlet.ShouldProcess($CodexMemoryMcpRoot, "Install CodexMemory MCP source")) {
-    Copy-PortableItem -Source (Join-Path $repo "tools\codex-memory-mcp") -Destination $CodexMemoryMcpRoot -Force:$Force
-}
-
 $template = [System.IO.File]::ReadAllText((Join-Path $repo "codex\config.template.toml"))
 $config = $template.Replace("{{WORKSPACE_TOML}}", (Convert-ToTomlPath $WorkspaceRoot))
 $config = $config.Replace("{{NODE_EXE_TOML}}", (Convert-ToTomlPath $NodeExe))
 $config = $config.Replace("{{WORKER_ENTRY_TOML}}", (Convert-ToTomlPath (Join-Path $WorkerRoot "src\cc-switch-worker-mcp.mjs")))
-$config = $config.Replace("{{CODEX_MEMORY_ENTRY_TOML}}", (Convert-ToTomlPath (Join-Path $CodexMemoryMcpRoot "src\server.mjs")))
-$config = $config.Replace("{{CODEX_MEMORY_MCP_ROOT_TOML}}", (Convert-ToTomlPath $CodexMemoryMcpRoot))
-$config = $config.Replace("{{CODEX_MEMORY_ROOT_TOML}}", (Convert-ToTomlPath $CodexMemoryRoot))
 
 if ($PSCmdlet.ShouldProcess((Join-Path $CodexHome "config.toml"), "Install Codex config template")) {
     $configTarget = Join-Path $CodexHome "config.toml"
@@ -169,4 +150,4 @@ if ($PSCmdlet.ShouldProcess((Join-Path $CodexHome "config.toml"), "Install Codex
 }
 
 Write-Host "Portable workspace installed."
-Write-Host "Run: $PSScriptRoot\verify.ps1 -CheckInstalled -AuditInstalledCoverage -CodexHome `"$CodexHome`" -ClaudeHome `"$ClaudeHome`" -AgentsHome `"$AgentsHome`" -WorkspaceRoot `"$WorkspaceRoot`" -WorkerRoot `"$WorkerRoot`" -CodexMemoryMcpRoot `"$CodexMemoryMcpRoot`""
+Write-Host "Run: $PSScriptRoot\verify.ps1 -CheckInstalled -AuditInstalledCoverage -CodexHome `"$CodexHome`" -ClaudeHome `"$ClaudeHome`" -AgentsHome `"$AgentsHome`" -WorkspaceRoot `"$WorkspaceRoot`" -WorkerRoot `"$WorkerRoot`""
