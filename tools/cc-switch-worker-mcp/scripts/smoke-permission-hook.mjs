@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -333,6 +333,31 @@ const cases = [
     input: { tool_name: "Read", tool_input: { file_path: "/tmp/cc-switch-worker-permission-smoke/.env" } },
     expect: "deny",
   },
+  {
+    name: "Glob inside workspace",
+    input: { tool_name: "Glob", tool_input: { pattern: "**/*.js", path: "/tmp/cc-switch-worker-permission-smoke/src" } },
+    expect: null,
+  },
+  {
+    name: "Glob outside workspace",
+    input: { tool_name: "Glob", tool_input: { pattern: "**/*", path: "/tmp" } },
+    expect: "deny",
+  },
+  {
+    name: "Glob forbidden path",
+    input: { tool_name: "Glob", tool_input: { pattern: "*", path: "/tmp/cc-switch-worker-permission-smoke/.env" } },
+    expect: "deny",
+  },
+  {
+    name: "Grep outside workspace",
+    input: { tool_name: "Grep", tool_input: { pattern: "secret", path: "/tmp" } },
+    expect: "deny",
+  },
+  {
+    name: "tool cwd outside workspace",
+    input: { tool_name: "Grep", tool_input: { pattern: "secret", cwd: "/tmp" } },
+    expect: "deny",
+  },
 ];
 
 const permissiveCases = [
@@ -377,6 +402,38 @@ const preDeniedResult = await runHook({
 if (preDeniedResult.output?.hookSpecificOutput?.permissionDecision !== "deny") {
   failures.push({ name: "PreToolUse denied command emits decision", expected: "deny", actual: preDeniedResult.stdout });
 }
+
+const linkRoot = mkdtempSync(join(tmpdir(), "cc-switch-worker-policy-link-"));
+const linkWorkspace = join(linkRoot, "workspace");
+const linkAllowed = join(linkWorkspace, "src");
+const linkOutside = join(linkRoot, "outside");
+mkdirSync(linkAllowed, { recursive: true });
+mkdirSync(linkOutside, { recursive: true });
+const escapeLink = join(linkAllowed, "escape");
+symlinkSync(linkOutside, escapeLink, process.platform === "win32" ? "junction" : "dir");
+const linkConfig = {
+  cwd: linkWorkspace,
+  allowed_dirs: [linkAllowed],
+  forbidden_paths: [],
+  checks: [],
+  worker_profile: "scoped_patch",
+  safety_mode: "safe",
+};
+const linkedWrite = await runHook({
+  tool_name: "Edit",
+  tool_input: { file_path: join(escapeLink, "outside.js") },
+}, linkConfig);
+if (linkedWrite.output?.hookSpecificOutput?.permissionDecision !== "deny") {
+  failures.push({ name: "write through link escaping workspace is denied", actual: linkedWrite.output });
+}
+const linkedRead = await runHook({
+  tool_name: "Read",
+  tool_input: { file_path: join(escapeLink, "outside.js") },
+}, linkConfig);
+if (linkedRead.output?.hookSpecificOutput?.permissionDecision !== "deny") {
+  failures.push({ name: "read through link escaping workspace is denied", actual: linkedRead.output });
+}
+rmSync(linkRoot, { recursive: true, force: true });
 const preHookLog = readFileSync(toolEventsPath, "utf8").trim();
 const preHookEvent = preHookLog ? JSON.parse(preHookLog.split(/\r?\n/).at(-1)) : null;
 if (preHookEvent?.permission_decision !== "deny" || !preHookEvent?.permission_reason) {
@@ -414,7 +471,7 @@ if (postToolDangerous.stdout.trim() !== "") {
 }
 rmSync(hookLogDir, { recursive: true, force: true });
 
-console.log(JSON.stringify({ cases: cases.length + permissiveCases.length + 3, failures }, null, 2));
+console.log(JSON.stringify({ cases: cases.length + permissiveCases.length + 5, failures }, null, 2));
 if (failures.length > 0) process.exitCode = 1;
 
 function runHook(input, hookConfig) {

@@ -18,7 +18,7 @@ writeFileSync(fakeLauncher, [
   "import { join } from 'node:path';",
   "writeFileSync(join(process.cwd(), 'allowed', 'index.js'), 'export const allowed = 2;\\n');",
   "writeFileSync(join(process.cwd(), 'outside.js'), 'export const outside = 2;\\n');",
-  "process.exit(0);",
+  "process.exit(1);",
   "",
 ].join("\n"));
 chmodSync(fakeLauncher, 0o755);

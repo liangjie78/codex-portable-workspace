@@ -48,11 +48,19 @@ if (defaults.effort) {
 env.API_TIMEOUT_MS = env.API_TIMEOUT_MS || "600000";
 env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC || "1";
 
-const child = spawn(claudeBin, process.argv.slice(2), {
+const invocation = nodeScriptInvocation(claudeBin, process.argv.slice(2));
+const child = spawn(invocation.command, invocation.args, {
   stdio: "inherit",
   env,
 });
+let forwardedSignal = null;
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => forwardSignal(signal));
+}
 child.on("exit", (code, signal) => {
+  if (forwardedSignal) {
+    process.exit(forwardedSignal === "SIGINT" ? 130 : 143);
+  }
   if (signal) {
     process.kill(process.pid, signal);
     return;
@@ -62,6 +70,23 @@ child.on("exit", (code, signal) => {
 child.on("error", (error) => {
   fail(error.message);
 });
+
+function forwardSignal(signal) {
+  if (forwardedSignal) return;
+  forwardedSignal = signal;
+  if (child.exitCode != null || child.signalCode != null || !child.kill(signal)) {
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  }
+  setTimeout(() => {
+    if (child.exitCode == null && child.signalCode == null) child.kill("SIGKILL");
+  }, 3000).unref();
+}
+
+function nodeScriptInvocation(command, args) {
+  return /\.(mjs|cjs|js)$/i.test(command)
+    ? { command: process.execPath, args: [command, ...args] }
+    : { command, args };
+}
 
 function modelDefaults(name) {
   if (name.includes("flash")) {

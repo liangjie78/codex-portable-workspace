@@ -1,21 +1,26 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "shared_skills": [
     "humanizer-zh",
     "tdd",
     "diagnosing-bugs",
-    "codebase-design",
-    "ui-ux-pro-max",
-    "guizang-ppt-skill"
+    "codebase-design"
   ],
   "codex_skills": [
     "bs",
     "design-md",
     "open-design",
-    "playwright"
+    "playwright",
+    "receiving-code-review",
+    "verification-before-completion",
+    "ui-ux-pro-max",
+    "guizang-ppt-skill",
+    "hatch-pet"
   ],
   "claude_skills": [
-    "agent-reach"
+    "agent-reach",
+    "ui-ux-pro-max",
+    "guizang-ppt-skill"
   ],
   "agent_skills": [
     "agent-reach",
@@ -30,5 +35,5 @@
     "gitnexus-taint-analysis"
   ],
   "targets": ["codex", "claude", "agents"],
-  "notes": "Repository copies include local Windows adaptations, Codex/Claude skills, .agents skills, and CC-Switch worker source."
+  "notes": "Only byte-identical Codex and Claude snapshots are shared. Platform-specific variants use skills/codex and skills/claude so restore never overwrites one platform with the other."
 }

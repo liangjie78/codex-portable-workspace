@@ -28,7 +28,7 @@ writeFileSync(fakeLauncher, [
   "  const roots = args.flatMap((value, index) => value === '--add-dir' ? [args[index + 1]] : []).filter(Boolean);",
   "  const expected = ['tdd', 'diagnosing-bugs', 'codebase-design', 'ui-ux-pro-max', 'guizang-ppt-skill'];",
   "  const stagedSkills = expected.every((skill) => roots.some((root) => existsSync(`${root}/.claude/skills/${skill}/SKILL.md`)));",
-  "  writeFileSync(process.env.CC_SWITCH_REQUIRED_SKILLS_ARGS, JSON.stringify({ args, prompt: input, stagedSkills }));",
+  `  writeFileSync(${JSON.stringify(argsOut)}, JSON.stringify({ args, prompt: input, stagedSkills }));`,
   "  setTimeout(() => process.exit(0), 25);",
   "});",
   "",
@@ -40,7 +40,6 @@ const server = spawn("node", ["src/cc-switch-worker-mcp.mjs"], {
   stdio: ["pipe", "pipe", "pipe"],
   env: {
     ...process.env,
-    CC_SWITCH_REQUIRED_SKILLS_ARGS: argsOut,
     CC_SWITCH_WORKER_SKILLS_ROOT: skillsRoot,
   },
 });

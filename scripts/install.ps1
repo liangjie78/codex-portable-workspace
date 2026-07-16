@@ -31,13 +31,10 @@ if (-not $NodeExe) {
     $NodeExe = $node.Source
 }
 $NodeExe = [System.IO.Path]::GetFullPath($NodeExe)
-
-Ensure-Directory $CodexHome
-Ensure-Directory $ClaudeHome
-Ensure-Directory $AgentsHome
-Ensure-Directory $WorkspaceRoot
+$appliedChanges = 0
 
 if ($PSCmdlet.ShouldProcess($CodexHome, "Install Codex global guidance")) {
+    Ensure-Directory $CodexHome
     $agentsTarget = Join-Path $CodexHome "AGENTS.md"
     if ((Test-Path -LiteralPath $agentsTarget) -and -not $Force) {
         throw "Destination already exists: $agentsTarget. Re-run with -Force after reviewing target."
@@ -47,6 +44,7 @@ if ($PSCmdlet.ShouldProcess($CodexHome, "Install Codex global guidance")) {
     }
     $agents = Render-PortableText ([System.IO.File]::ReadAllText((Join-Path $repo "codex\AGENTS.md"))) $CodexHome $WorkspaceRoot
     Write-Utf8NoBom $agentsTarget $agents
+    $appliedChanges++
 }
 
 foreach ($prefix in @("01_", "02_", "04_", "05_")) {
@@ -59,6 +57,7 @@ foreach ($prefix in @("01_", "02_", "04_", "05_")) {
     $sourceFile = $sourceMatches[0]
     $target = Join-Path $WorkspaceRoot $sourceFile.Name
     if ($PSCmdlet.ShouldProcess($target, "Install workspace rule")) {
+        Ensure-Directory $WorkspaceRoot
         if ((Test-Path -LiteralPath $target) -and -not $Force) {
             throw "Destination already exists: $target. Re-run with -Force after reviewing target."
         }
@@ -67,6 +66,7 @@ foreach ($prefix in @("01_", "02_", "04_", "05_")) {
         }
         $content = Render-PortableText ([System.IO.File]::ReadAllText($sourceFile.FullName)) $CodexHome $WorkspaceRoot
         Write-Utf8NoBom $target $content
+        $appliedChanges++
     }
 }
 
@@ -80,12 +80,14 @@ if ($inventoryTemplateMatches.Count -ne 1) {
 }
 $inventoryTargetName = $inventoryTemplateMatches[0].Name -replace '\.template\.md$', '.md'
 $inventoryTarget = Join-Path $WorkspaceRoot $inventoryTargetName
-if (-not (Test-Path -LiteralPath $inventoryTarget)) {
+if (-not (Test-Path -LiteralPath $inventoryTarget) -and $PSCmdlet.ShouldProcess($inventoryTarget, "Install local tool inventory template")) {
+    Ensure-Directory $WorkspaceRoot
     $inventory = [System.IO.File]::ReadAllText($inventoryTemplateMatches[0].FullName)
     $inventory = $inventory.Replace("{{WORKSPACE_ROOT}}", $WorkspaceRoot).
         Replace("{{CODEX_HOME}}", $CodexHome).
         Replace("{{CLAUDE_HOME}}", $ClaudeHome)
     Write-Utf8NoBom $inventoryTarget $inventory
+    $appliedChanges++
 }
 
 $manifest = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $repo "skills\manifest.json") | ConvertFrom-Json
@@ -100,6 +102,7 @@ function Install-SkillSnapshot {
     $target = Join-Path $TargetSkillsRoot $SkillName
     if ($PSCmdlet.ShouldProcess($target, "Install skill $SkillName")) {
         Copy-PortableItem -Source $source -Destination $target -Force:$Force
+        $script:appliedChanges++
     }
 }
 
@@ -122,12 +125,15 @@ foreach ($skill in (Get-ManifestList $manifest "agent_skills")) {
 
 if ($PSCmdlet.ShouldProcess($WorkerRoot, "Install CC-Switch worker source")) {
     Copy-PortableItem -Source (Join-Path $repo "tools\cc-switch-worker-mcp") -Destination $WorkerRoot -Force:$Force
+    $appliedChanges++
 }
 
-if ($InstallWorkerDependencies) {
+if ($InstallWorkerDependencies -and $PSCmdlet.ShouldProcess($WorkerRoot, "Install CC-Switch worker dependencies")) {
     Push-Location $WorkerRoot
     try {
         npm install --ignore-scripts
+        if ($LASTEXITCODE -ne 0) { throw "Worker dependency installation failed with exit code $LASTEXITCODE" }
+        $appliedChanges++
     } finally {
         Pop-Location
     }
@@ -138,16 +144,43 @@ $config = $template.Replace("{{WORKSPACE_TOML}}", (Convert-ToTomlPath $Workspace
 $config = $config.Replace("{{NODE_EXE_TOML}}", (Convert-ToTomlPath $NodeExe))
 $config = $config.Replace("{{WORKER_ENTRY_TOML}}", (Convert-ToTomlPath (Join-Path $WorkerRoot "src\cc-switch-worker-mcp.mjs")))
 
-if ($PSCmdlet.ShouldProcess((Join-Path $CodexHome "config.toml"), "Install Codex config template")) {
-    $configTarget = Join-Path $CodexHome "config.toml"
+$configTarget = Join-Path $CodexHome "config.toml"
+if ($PSCmdlet.ShouldProcess($configTarget, "Merge portable Codex config fields")) {
     if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
         throw "Destination already exists: $configTarget. Re-run with -Force after reviewing target."
     }
+    Ensure-Directory $CodexHome
     if (Test-Path -LiteralPath $configTarget) {
-        Backup-ExistingItem $configTarget | Out-Null
+        $existingConfig = [System.IO.File]::ReadAllText($configTarget)
+        $mergedConfig = Merge-PortableCodexConfig $existingConfig $config
+        if ($mergedConfig.Content -cne $existingConfig) {
+            Write-Host "Config merge preview: $($mergedConfig.Changes -join '; ')"
+            $configBackup = Backup-ExistingItem $configTarget
+            Write-Host "Config backup: $configBackup"
+            Write-Utf8NoBom $configTarget $mergedConfig.Content
+            $appliedChanges++
+        } else {
+            Write-Host "Config already contains the portable fields; no config write needed."
+        }
+    } else {
+        Write-Utf8NoBom $configTarget $config
+        $appliedChanges++
     }
-    Write-Utf8NoBom $configTarget $config
 }
 
-Write-Host "Portable workspace installed."
-Write-Host "Run: $PSScriptRoot\verify.ps1 -CheckInstalled -AuditInstalledCoverage -CodexHome `"$CodexHome`" -ClaudeHome `"$ClaudeHome`" -AgentsHome `"$AgentsHome`" -WorkspaceRoot `"$WorkspaceRoot`" -WorkerRoot `"$WorkerRoot`""
+$inventoryPath = Join-Path $CodexHome "portable-install-inventory.json"
+if ($PSCmdlet.ShouldProcess($inventoryPath, "Write installed inventory")) {
+    Ensure-Directory $CodexHome
+    $inventoryPath = Write-InstalledInventory $manifest $CodexHome $ClaudeHome $AgentsHome $WorkspaceRoot $WorkerRoot
+    $appliedChanges++
+}
+
+if ($WhatIfPreference) {
+    Write-Host "Preview complete. No files were written."
+} elseif ($appliedChanges -gt 0) {
+    Write-Host "Portable workspace installed."
+    Write-Host "Installed inventory: $inventoryPath"
+    Write-Host "Run: pwsh -NoProfile -File $PSScriptRoot\verify.ps1 -CheckInstalled -AuditInstalledCoverage -CodexHome `"$CodexHome`" -ClaudeHome `"$ClaudeHome`" -AgentsHome `"$AgentsHome`" -WorkspaceRoot `"$WorkspaceRoot`" -WorkerRoot `"$WorkerRoot`""
+} else {
+    Write-Host "No changes applied."
+}

@@ -21,8 +21,8 @@ writeFileSync(fakeLauncher, [
   "process.stdin.setEncoding('utf8');",
   "process.stdin.on('data', (chunk) => { input += chunk; });",
   "process.stdin.on('end', () => {",
-  "  writeFileSync(process.env.CC_SWITCH_CONTEXT_ARGS, JSON.stringify(process.argv.slice(2), null, 2));",
-  "  writeFileSync(process.env.CC_SWITCH_CONTEXT_STDIN, input);",
+  `  writeFileSync(${JSON.stringify(argsOut)}, JSON.stringify(process.argv.slice(2), null, 2));`,
+  `  writeFileSync(${JSON.stringify(stdinOut)}, input);`,
   "  process.exit(0);",
   "});",
   "",
@@ -32,11 +32,7 @@ chmodSync(fakeLauncher, 0o755);
 const server = spawn("node", ["src/cc-switch-worker-mcp.mjs"], {
   cwd: process.cwd(),
   stdio: ["pipe", "pipe", "pipe"],
-  env: {
-    ...process.env,
-    CC_SWITCH_CONTEXT_ARGS: argsOut,
-    CC_SWITCH_CONTEXT_STDIN: stdinOut,
-  },
+  env: { ...process.env },
 });
 
 const responses = [];

@@ -10,6 +10,7 @@ export const DEFAULT_SYNC_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_FOREGROUND_WAIT_CAP_MS = 10 * 60 * 1000;
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = positiveEnvNumber("CC_SWITCH_WORKER_HEARTBEAT_INTERVAL_MS", 15 * 1000);
+export const JOB_TTL_MS = positiveEnvNumber("CC_SWITCH_WORKER_JOB_TTL_MS", 7 * 24 * 60 * 60 * 1000);
 export const DEFAULT_FAST_PATCH_TIMEOUT_MS = 120 * 1000;
 export const DEFAULT_SIMPLE_TASK_TIMEOUT_MS = 180 * 1000;
 export const DEFAULT_SCAFFOLD_TIMEOUT_MS = 300 * 1000;
@@ -18,7 +19,7 @@ export const DEFAULT_IDLE_AFTER_MS = 45 * 1000;
 export const DEFAULT_QUIET_AFTER_TOOL_USE_WITHOUT_RESULT_MS = 4 * 60 * 1000;
 export const DEFAULT_QUIET_AFTER_FILE_CHANGE_MS = 10 * 60 * 1000;
 export const DEFAULT_NO_CHANGES_AFTER_LONG_RUN_MS = 12 * 60 * 1000;
-export const DEFAULT_REASONING_EFFORT = "max";
+export const DEFAULT_REASONING_EFFORT = "high";
 export const MAX_OUTPUT_CHARS = 20000;
 export const MAX_STREAM_EVENTS = 200;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -100,18 +101,20 @@ export const USE_CASES = {
   auto: {
     model: null,
     thinking: "enabled",
-    reasoning_effort: "max",
+    reasoning_effort: "high",
+    max_budget_usd: 0.5,
     default_timeout_ms: null,
     idle_after_ms: DEFAULT_IDLE_AFTER_MS,
     verification_profile: "smoke",
     output_format: "stream-json",
     prompt:
-      "Use the fast default CC-Switch route first for ordinary implementation. Escalate in-task depth only when the code change is cross-file, ambiguous, or failure-prone.",
+      "Use the current CC-Switch route for ordinary implementation. Escalate in-task depth only when the code change is cross-file, ambiguous, or failure-prone.",
   },
   fast_patch: {
     model: null,
     thinking: "disabled",
-    reasoning_effort: "high",
+    reasoning_effort: "low",
+    max_budget_usd: 0.05,
     default_timeout_ms: DEFAULT_FAST_PATCH_TIMEOUT_MS,
     idle_after_ms: DEFAULT_IDLE_AFTER_MS,
     verification_profile: "smoke",
@@ -122,7 +125,8 @@ export const USE_CASES = {
   simple_agent_task: {
     model: null,
     thinking: "enabled",
-    reasoning_effort: "high",
+    reasoning_effort: "medium",
+    max_budget_usd: 0.1,
     default_timeout_ms: DEFAULT_SIMPLE_TASK_TIMEOUT_MS,
     idle_after_ms: DEFAULT_IDLE_AFTER_MS,
     verification_profile: "standard",
@@ -133,7 +137,8 @@ export const USE_CASES = {
   scaffold_or_tests: {
     model: null,
     thinking: "enabled",
-    reasoning_effort: "high",
+    reasoning_effort: "medium",
+    max_budget_usd: 0.25,
     default_timeout_ms: DEFAULT_SCAFFOLD_TIMEOUT_MS,
     idle_after_ms: DEFAULT_IDLE_AFTER_MS,
     verification_profile: "standard",
@@ -145,6 +150,7 @@ export const USE_CASES = {
     model: null,
     thinking: "enabled",
     reasoning_effort: "max",
+    max_budget_usd: 1,
     default_timeout_ms: null,
     idle_after_ms: DEEP_THINKING_IDLE_AFTER_MS,
     requires_review: true,
@@ -157,18 +163,20 @@ export const USE_CASES = {
     model: null,
     thinking: "enabled",
     reasoning_effort: "max",
+    max_budget_usd: 1,
     default_timeout_ms: null,
     idle_after_ms: DEEP_THINKING_IDLE_AFTER_MS,
     requires_review: true,
     verification_profile: "standard",
     output_format: "stream-json",
     prompt:
-      "Use the stronger default CC-Switch route for agentic coding: inspect the real workspace, reason across files, edit directly, and verify with checks. Complex agentic output should be reviewed before acceptance.",
+      "Use the current CC-Switch route for agentic coding: inspect the real workspace, reason across files, edit directly, and verify with checks. Complex agentic output should be reviewed before acceptance.",
   },
   complex_reasoning: {
     model: null,
     thinking: "enabled",
     reasoning_effort: "max",
+    max_budget_usd: 2,
     default_timeout_ms: null,
     idle_after_ms: DEEP_THINKING_IDLE_AFTER_MS,
     requires_review: true,
@@ -181,6 +189,7 @@ export const USE_CASES = {
     model: null,
     thinking: "enabled",
     reasoning_effort: "max",
+    max_budget_usd: 1.5,
     default_timeout_ms: null,
     idle_after_ms: DEEP_THINKING_IDLE_AFTER_MS,
     requires_review: true,
@@ -192,7 +201,8 @@ export const USE_CASES = {
   docs_generation: {
     model: null,
     thinking: "enabled",
-    reasoning_effort: "high",
+    reasoning_effort: "low",
+    max_budget_usd: 0.1,
     default_timeout_ms: null,
     idle_after_ms: DEEP_THINKING_IDLE_AFTER_MS,
     allow_docs_only: true,

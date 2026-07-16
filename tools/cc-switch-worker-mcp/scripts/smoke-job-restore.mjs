@@ -1,21 +1,31 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { JOB_ROOT, USE_CASES } from "../src/core/config.mjs";
 
-const jobId = "ccsw_restore_smoke";
-const runningJobId = "ccsw_running_no_wait_smoke";
+const jobId = "ccsw_restore_000001";
+const runningJobId = "ccsw_running_000002";
+const staleRunningJobId = "ccsw_stale_000003";
+const expiredJobId = "ccsw_expired_000004";
+const escapeLeaf = `ccsw_escape_${process.pid.toString(36).padStart(6, "0").slice(-6)}`;
 const jobDir = join(JOB_ROOT, jobId);
 const runningJobDir = join(JOB_ROOT, runningJobId);
+const staleRunningJobDir = join(JOB_ROOT, staleRunningJobId);
+const expiredJobDir = join(JOB_ROOT, expiredJobId);
+const escapeJobDir = join(dirname(JOB_ROOT), escapeLeaf);
 const cwd = join(tmpdir(), "cc-switch-worker-restore-smoke");
 
 rmSync(jobDir, { recursive: true, force: true });
 rmSync(runningJobDir, { recursive: true, force: true });
+rmSync(staleRunningJobDir, { recursive: true, force: true });
 rmSync(cwd, { recursive: true, force: true });
 mkdirSync(jobDir, { recursive: true });
 mkdirSync(runningJobDir, { recursive: true });
+mkdirSync(staleRunningJobDir, { recursive: true });
+mkdirSync(expiredJobDir, { recursive: true });
+mkdirSync(escapeJobDir, { recursive: true });
 mkdirSync(cwd, { recursive: true });
 const runningPlaceholder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {
   stdio: "ignore",
@@ -114,10 +124,47 @@ writeFileSync(join(runningJobDir, "status.json"), JSON.stringify({
   checks: [],
   allow_docs_only: false,
 }, null, 2));
+writeFileSync(join(staleRunningJobDir, "before-snapshot.json"), JSON.stringify([]));
+writeFileSync(join(staleRunningJobDir, "status.json"), JSON.stringify({
+  id: staleRunningJobId,
+  status: "running",
+  started_at: new Date(Date.now() - 86_500_000).toISOString(),
+  updated_at: new Date().toISOString(),
+  last_heartbeat_at: new Date(Date.now() - 86_400_000).toISOString(),
+  cwd,
+  use_case: "auto",
+  worker_profile: "implementation",
+  permission_mode: "acceptEdits",
+  phase: "model_running",
+  phase_message: "stale running smoke",
+  process_alive: true,
+  process_pid: runningPlaceholder.pid,
+  output_format: "stream-json",
+  ignored_dirs: [".git", "node_modules"],
+  allowedRoots: [cwd],
+  forbiddenPaths: [],
+  checks: [],
+  allow_docs_only: false,
+}, null, 2));
+writeFileSync(join(expiredJobDir, "status.json"), JSON.stringify({
+  id: expiredJobId,
+  status: "completed",
+  started_at: new Date(Date.now() - 120_000).toISOString(),
+  updated_at: new Date(Date.now() - 120_000).toISOString(),
+  cwd,
+}, null, 2));
+writeFileSync(join(escapeJobDir, "status.json"), JSON.stringify({
+  id: escapeLeaf,
+  status: "completed",
+  started_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  cwd,
+}, null, 2));
 
 const server = spawn("node", ["src/cc-switch-worker-mcp.mjs"], {
   cwd: process.cwd(),
   stdio: ["pipe", "pipe", "pipe"],
+  env: { ...process.env, CC_SWITCH_WORKER_JOB_TTL_MS: "60000" },
 });
 
 const responses = [];
@@ -152,6 +199,23 @@ send(6, "tools/call", {
   name: "cc_switch_get_job",
   arguments: { job_id: jobId, include_logs: true, include_events: true, include_diff: true },
 });
+send(7, "tools/call", {
+  name: "cc_switch_get_job",
+  arguments: { job_id: staleRunningJobId },
+});
+const invalidJobIds = [
+  `..\\${escapeLeaf}`,
+  `../${escapeLeaf}`,
+  `..//${escapeLeaf}`,
+  escapeJobDir,
+];
+send(8, "tools/call", { name: "cc_switch_get_job", arguments: { job_id: invalidJobIds[0] } });
+send(9, "tools/call", { name: "cc_switch_diagnose_job", arguments: { job_id: invalidJobIds[1] } });
+send(10, "tools/call", { name: "cc_switch_tail_job", arguments: { job_id: invalidJobIds[2] } });
+send(11, "tools/call", { name: "cc_switch_wait_for_job", arguments: { job_id: invalidJobIds[0], max_wait_ms: 1 } });
+send(12, "tools/call", { name: "cc_switch_cancel_job", arguments: { job_id: invalidJobIds[1] } });
+send(13, "tools/call", { name: "cc_switch_get_job", arguments: { job_id: invalidJobIds[3] } });
+send(14, "tools/call", { name: "cc_switch_list_jobs", arguments: {} });
 
 const getJobResponse = await waitForResponseId(2, 5000);
 const getJob = parseToolPayload(getJobResponse);
@@ -159,10 +223,21 @@ const waitJob = parseToolPayload(await waitForResponseId(3, 5000));
 const noWaitJob = parseToolPayload(await waitForResponseId(4, 5000));
 const runningNoWaitJob = parseToolPayload(await waitForResponseId(5, 5000));
 const verboseGetJob = parseToolPayload(await waitForResponseId(6, 5000));
-server.kill("SIGTERM");
+const staleRestoredJob = parseToolPayload(await waitForResponseId(7, 5000));
+const invalidResponses = [];
+for (let id = 8; id <= 13; id++) invalidResponses.push(await waitForResponseId(id, 5000));
+const afterCleanup = parseToolPayload(await waitForResponseId(14, 5000));
 runningPlaceholder.kill("SIGTERM");
+await waitForChildClose(runningPlaceholder);
+send(15, "tools/call", {
+  name: "cc_switch_get_job",
+  arguments: { job_id: runningJobId },
+});
+const exitedRestoredJob = parseToolPayload(await waitForResponseId(15, 5000));
+server.kill("SIGTERM");
 rmSync(jobDir, { recursive: true, force: true });
 rmSync(runningJobDir, { recursive: true, force: true });
+rmSync(staleRunningJobDir, { recursive: true, force: true });
 rmSync(cwd, { recursive: true, force: true });
 
 console.log(JSON.stringify({
@@ -174,6 +249,9 @@ console.log(JSON.stringify({
   no_wait_reason: noWaitJob.reason,
   running_no_wait_status: runningNoWaitJob.status,
   running_no_wait_reason: runningNoWaitJob.reason,
+  stale_restored_status: staleRestoredJob.status,
+  exited_restored_status: exitedRestoredJob.status,
+  exited_restored_health_state: exitedRestoredJob.progress?.health?.state ?? null,
   restored_progress_source: getJob.progress?.progress_source ?? null,
   restored_health_state: getJob.progress?.health?.state ?? null,
   running_health_state: runningNoWaitJob.progress?.health?.state ?? null,
@@ -187,6 +265,8 @@ console.log(JSON.stringify({
   verbose_get_has_diffs: hasKeyDeep(verboseGetJob, "file_diffs"),
   changed_files: getJob.progress?.changed_files_so_far ?? [],
   auto_reasoning_effort: USE_CASES.auto.reasoning_effort,
+  invalid_job_ids_rejected: invalidResponses.map(isToolRejected),
+  expired_job_removed: !existsSync(expiredJobDir),
 }, null, 2));
 
 if (stderr) process.stderr.write(stderr);
@@ -200,6 +280,9 @@ if (
   || noWaitJob.reason !== "orphaned_after_mcp_restart"
   || runningNoWaitJob.status !== "running"
   || runningNoWaitJob.reason !== "no_wait_requested"
+  || staleRestoredJob.status !== "orphaned"
+  || exitedRestoredJob.status !== "orphaned"
+  || exitedRestoredJob.progress?.health?.state !== "orphaned_after_restart"
   || getJob.progress?.progress_source !== "persisted_result"
   || getJob.progress?.health?.state !== "orphaned_after_restart"
   || runningNoWaitJob.progress?.health?.state !== "pending_tool_quiet"
@@ -216,10 +299,15 @@ if (
   || !hasKeyDeep(verboseGetJob, "recent_events")
   || !hasKeyDeep(verboseGetJob, "file_diffs")
   || !getJob.progress?.changed_files_so_far?.includes("sample.js")
-  || USE_CASES.auto.reasoning_effort !== "max"
+  || USE_CASES.auto.reasoning_effort !== "high"
+  || invalidResponses.some((response) => !isToolRejected(response))
+  || existsSync(expiredJobDir)
+  || afterCleanup.jobs?.some((job) => job.job_id === expiredJobId)
 ) {
   process.exitCode = 1;
 }
+rmSync(expiredJobDir, { recursive: true, force: true });
+rmSync(escapeJobDir, { recursive: true, force: true });
 
 function send(id, method, params = {}) {
   server.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
@@ -252,4 +340,13 @@ function waitForResponseId(id, timeoutMs) {
       }
     }, 50);
   });
+}
+
+function isToolRejected(response) {
+  return Boolean(response.error || response.result?.isError);
+}
+
+function waitForChildClose(child) {
+  if (child.exitCode != null || child.signalCode != null) return Promise.resolve();
+  return new Promise((resolvePromise) => child.once("close", resolvePromise));
 }

@@ -7,7 +7,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   accessSync,
-  appendFileSync,
   chmodSync,
   constants as fsConstants,
   cpSync,
@@ -17,6 +16,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -38,6 +38,7 @@ import {
   DEFAULT_REASONING_EFFORT,
   DEFAULT_SYNC_TIMEOUT_MS,
   JOB_ROOT,
+  JOB_TTL_MS,
   MAX_DIFF_CONTENT_BYTES,
   MAX_DIFF_LINES,
   MAX_FILE_BYTES,
@@ -50,6 +51,7 @@ import {
   WORKER_PROFILES,
 } from "./core/config.mjs";
 import {
+  claudeResultMetadata,
   classifyClaudeEvent,
   compactClaudeEvent,
   consumeJsonLines,
@@ -58,6 +60,23 @@ import {
 } from "./core/stream-events.mjs";
 
 const jobs = new Map();
+const JOB_ID_PATTERN = /^ccsw_[a-z0-9]+_[a-z0-9]{6}$/;
+const SUBPROCESS_ENV_ALLOWLIST = new Set([
+  "ALL_PROXY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_MODEL", "APPDATA", "CC_SWITCH_API_KEY_FILE", "CC_SWITCH_KEEP_ANTHROPIC_API_KEY",
+  "CC_SWITCH_WORKER_SKILLS_ROOT", "CLAUDE_BIN", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+  "ComSpec", "COMSPEC", "DISABLE_AUTO_UPDATE", "HOME", "HOMEDRIVE", "HOMEPATH",
+  "HTTP_PROXY", "HTTPS_PROXY", "LANG", "LC_ALL", "LC_CTYPE", "LOCALAPPDATA", "NO_PROXY",
+  "NODE_EXTRA_CA_CERTS", "NUMBER_OF_PROCESSORS", "OS", "Path", "PATH", "PATHEXT",
+  "ProgramData", "PROGRAMDATA", "ProgramFiles", "PROGRAMFILES", "ProgramFiles(x86)",
+  "ProgramW6432", "SHELL", "SSL_CERT_DIR", "SSL_CERT_FILE", "SystemRoot", "SYSTEMROOT",
+  "TEMP", "TERM", "TMP", "TMPDIR", "USERPROFILE", "windir", "WINDIR",
+  "all_proxy", "http_proxy", "https_proxy", "no_proxy",
+]);
+const PROCESS_TERMINATION_GRACE_MS = 5000;
+const RESTORED_JOB_STALE_AFTER_MS = Math.max(DEFAULT_HEARTBEAT_INTERVAL_MS * 4, 60_000);
+let lastJobCleanupAt = 0;
 let shuttingDown = false;
 
 const toolOutputSchema = {
@@ -88,7 +107,7 @@ const tools = [
     name: "cc_switch_start_implementation",
     title: "Start CC-Switch worker job",
     description:
-      "Start one async CC-Switch coding worker for one clearly scoped implementation task and return a job_id immediately. Best default: the host agent defines the task boundary, this worker edits/checks files, and the host reviews terminal diff/policy/checks. Do not start a second worker for the same task while the first job is running. If a follow-up worker is needed after terminal status, include the previous job_id, terminal status, failure/check result, and current diff summary in the new task. Do not request logs/events/diffs while running unless debugging. Default auto use_case uses reasoning_effort=max.",
+      "Start one async CC-Switch coding worker for one clearly scoped implementation task and return a job_id immediately. Best default: the host agent defines the task boundary, this worker edits/checks files, and the host reviews terminal diff/policy/checks. Do not start a second worker for the same task while the first job is running. If a follow-up worker is needed after terminal status, include the previous job_id, terminal status, failure/check result, and current diff summary in the new task. Do not request logs/events/diffs while running unless debugging. Default auto use_case pins sonnet/high with a bounded API budget; fast_patch pins haiku/low.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -198,7 +217,7 @@ const tools = [
     name: "cc_switch_wait_for_job",
     title: "Observe CC-Switch worker job",
     description:
-      "Observe a CC-Switch worker job for a short foreground window. Returns completion/partial/failure if done; otherwise returns running compact status. This is not the main polling loop, not a timeout policy, and never cancels or reviews the worker. The stronger default routed model can stay quiet for long thinking segments.",
+      "Observe a CC-Switch worker job for a short foreground window. Returns completion/partial/failure if done; otherwise returns running compact status. This is not the main polling loop, not a timeout policy, and never cancels or reviews the worker. A worker can stay quiet for long thinking segments.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -298,27 +317,52 @@ function shutdownServer(reason, exitCode) {
     job.phase = "server_shutdown";
     job.phase_message = `MCP server shutting down: ${reason}`;
     job.last_error_kind = "mcp_server_shutdown";
-    if (job.child && !job.child.killed) {
+    if (job.child) {
       job.cancel_requested = true;
       job.status = "cancel_requested";
-      job.child.kill("SIGTERM");
-      setTimeout(() => {
-        if (job.child && !job.child.killed) job.child.kill("SIGKILL");
-      }, 3000).unref();
+      terminateChildProcess(job.child);
     } else if (job.restored_from_disk && job.process_pid && processPidAlive(job.process_pid)) {
       job.cancel_requested = true;
       job.status = "cancel_requested";
       try {
-        process.kill(job.process_pid, "SIGTERM");
+        terminateProcessByPid(job.process_pid);
       } catch {
         // Persisted PIDs can disappear between the liveness check and kill.
       }
     }
     writeJobStatus(job);
   }
+  process.exitCode = exitCode;
   setTimeout(() => {
     process.exit(exitCode);
-  }, 25).unref();
+  }, PROCESS_TERMINATION_GRACE_MS + 250).unref();
+}
+
+function terminateChildProcess(child) {
+  if (!child || child.exitCode != null || child.signalCode != null) return false;
+  let signaled = false;
+  try {
+    signaled = child.kill("SIGTERM");
+  } catch {
+    return false;
+  }
+  if (!signaled) return false;
+  setTimeout(() => {
+    if (child.exitCode == null && child.signalCode == null) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // The child can exit between the state check and the signal.
+      }
+    }
+  }, PROCESS_TERMINATION_GRACE_MS).unref();
+  return true;
+}
+
+function terminateProcessByPid(pid) {
+  if (!pid || !processPidAlive(pid)) return false;
+  process.kill(pid, "SIGTERM");
+  return true;
 }
 
 async function runMcpServer() {
@@ -374,6 +418,12 @@ async function runDoctor() {
     ok: Boolean(resolveExecutable(claudeCodeBin)),
     detail: resolveExecutable(claudeCodeBin) || `not found or not executable: ${claudeCodeBin}`,
   });
+  const claudeCapabilities = inspectClaudeCliCapabilities(claudeCodeBin);
+  checks.push({
+    name: "claude_print_limits",
+    ok: claudeCapabilities.ok && claudeCapabilities.max_budget_usd,
+    detail: `max_budget_usd=${claudeCapabilities.max_budget_usd}; max_turns=${claudeCapabilities.max_turns}; ${claudeCapabilities.detail}`,
+  });
 
   const keyFile = process.env.CC_SWITCH_API_KEY_FILE || resolve(homedir(), ".codex/secrets/cc_switch_api_key");
   const hasToken = Boolean(process.env.ANTHROPIC_AUTH_TOKEN);
@@ -401,6 +451,8 @@ async function runDoctor() {
     cwd: process.cwd(),
     permission_mode: "dontAsk",
     model: null,
+    reasoning_effort: "high",
+    max_budget_usd: 0.05,
     output_format: "stream-json",
     claude_settings_arg: JSON.stringify({ permissions: { defaultMode: "dontAsk" } }),
   });
@@ -409,6 +461,8 @@ async function runDoctor() {
     ok: invocation.args.includes("--verbose")
       && invocation.args.includes("--include-partial-messages")
       && invocation.args.includes("--settings")
+      && invocation.args.includes("--effort")
+      && invocation.args.includes("--max-budget-usd")
       && invocation.args.includes("--input-format")
       && invocation.args.includes("text")
       && invocation.args.includes("--add-dir"),
@@ -444,6 +498,7 @@ async function runDoctor() {
     checks,
     codex_registration: codexRegistration,
     process_drift: processDrift,
+    claude_capabilities: claudeCapabilities,
     job_root_summary: jobRootSummary,
     setup_hint: checks.every((check) => check.ok)
       ? null
@@ -451,6 +506,24 @@ async function runDoctor() {
   };
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   return payload.ok;
+}
+
+function inspectClaudeCliCapabilities(command) {
+  const resolved = resolveExecutable(command);
+  if (!resolved) return { ok: false, max_budget_usd: false, max_turns: false, detail: "Claude Code CLI not found" };
+  const result = spawnSync(resolved, ["--help"], {
+    encoding: "utf8",
+    timeout: 5000,
+    windowsHide: true,
+    shell: platform() === "win32",
+  });
+  const help = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  return {
+    ok: result.status === 0,
+    max_budget_usd: help.includes("--max-budget-usd"),
+    max_turns: help.includes("--max-turns"),
+    detail: result.status === 0 ? "capabilities read from claude --help" : (result.error?.message ?? `claude --help exit ${result.status}`),
+  };
 }
 
 function inspectCodexRegistration() {
@@ -503,6 +576,14 @@ function inspectCodexRegistration() {
 
 function inspectCcSwitchMcpProcesses() {
   const expectedPath = resolve(SELF_SCRIPT);
+  if (process.env.CC_SWITCH_WORKER_DOCTOR_ISOLATED === "1") {
+    return {
+      ok: true,
+      expected_path: expectedPath,
+      processes: [],
+      detail: "process path drift check skipped in isolated CI",
+    };
+  }
   if (platform() !== "win32") {
     return {
       ok: true,
@@ -512,7 +593,7 @@ function inspectCcSwitchMcpProcesses() {
     };
   }
 
-  const result = spawnSync("powershell", [
+  const result = spawnSync("pwsh", [
     "-NoProfile",
     "-Command",
     [
@@ -703,6 +784,7 @@ function npmInstallInvocation(npmBin) {
 }
 
 async function callTool(params) {
+  cleanupExpiredJobs();
   const name = params.name;
   const args = params.arguments ?? {};
 
@@ -718,7 +800,7 @@ async function callTool(params) {
       if (duplicate) return toolResult(alreadyRunningResult(duplicate, prepared));
     }
     const jobId = `ccsw_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    const jobDir = join(JOB_ROOT, jobId);
+    const jobDir = resolveJobDirectory(jobId);
     mkdirSync(jobDir, { recursive: true });
     const job = createJob(jobId, jobDir, prepared);
     jobs.set(jobId, job);
@@ -777,10 +859,10 @@ async function callTool(params) {
     job.status = "cancel_requested";
     job.updated_at = new Date().toISOString();
     if (job.child) {
-      job.child.kill("SIGTERM");
+      terminateChildProcess(job.child);
     } else if (job.restored_from_disk && job.process_pid && processPidAlive(job.process_pid)) {
       try {
-        process.kill(job.process_pid, "SIGTERM");
+        terminateProcessByPid(job.process_pid);
       } catch (error) {
         job.last_error_kind = "cancel_signal_failed";
         job.error = errorResult(error);
@@ -798,9 +880,9 @@ async function runImplementation(rawArgs, options = {}) {
 }
 
 function getJob(jobId) {
-  if (typeof jobId !== "string" || jobId.length === 0) return null;
+  resolveJobDirectory(jobId);
   const existing = jobs.get(jobId);
-  if (existing) return existing;
+  if (existing) return refreshRestoredJobState(existing);
   const restored = restoreJob(jobId);
   if (!restored) return null;
   jobs.set(jobId, restored);
@@ -844,10 +926,46 @@ function jobIdsFromDisk() {
   try {
     if (!existsSync(JOB_ROOT)) return [];
     return readdirSync(JOB_ROOT, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && existsSync(join(JOB_ROOT, entry.name, "status.json")))
+      .filter((entry) => entry.isDirectory() && isValidJobId(entry.name))
+      .filter((entry) => existsSync(join(resolveJobDirectory(entry.name), "status.json")))
       .map((entry) => entry.name);
   } catch {
     return [];
+  }
+}
+
+function isValidJobId(jobId) {
+  return typeof jobId === "string" && JOB_ID_PATTERN.test(jobId);
+}
+
+function resolveJobDirectory(jobId) {
+  if (!isValidJobId(jobId)) throw new Error("Invalid job_id. Expected a server-generated CC-Switch job identifier.");
+  const root = resolve(JOB_ROOT);
+  const jobDir = resolve(root, jobId);
+  if (jobDir === root || !isInside(root, jobDir)) throw new Error("Invalid job_id path.");
+  return jobDir;
+}
+
+function cleanupExpiredJobs(now = Date.now()) {
+  if (now - lastJobCleanupAt < 60_000) return;
+  lastJobCleanupAt = now;
+  for (const jobId of jobIdsFromDisk()) {
+    const liveJob = jobs.get(jobId);
+    if (liveJob && ["running", "cancel_requested"].includes(liveJob.status)) continue;
+    const jobDir = resolveJobDirectory(jobId);
+    const data = readJobStatusData(jobId);
+    if (data && persistedJobCanHaveLiveProcess(data.status) && persistedProcessAlive(data, now)) continue;
+    let updatedAt = parseTimeMs(data?.updated_at);
+    if (updatedAt == null) {
+      try {
+        updatedAt = statSync(jobDir).mtimeMs;
+      } catch {
+        continue;
+      }
+    }
+    if (now - updatedAt <= JOB_TTL_MS) continue;
+    rmSync(jobDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    jobs.delete(jobId);
   }
 }
 
@@ -867,7 +985,7 @@ function summarizeJobRoot() {
         newestJobs.push({ job_id: id, status: "unreadable", updated_at: null });
         continue;
       }
-      const processAlive = persistedJobCanHaveLiveProcess(data.status) && data.process_pid && processPidAlive(data.process_pid);
+      const processAlive = persistedProcessAlive(data);
       const status = normalizedPersistedJobStatus(data, { processAlive });
       statusCounts[status] = (statusCounts[status] ?? 0) + 1;
       if (persistedJobCanHaveLiveProcess(data.status) && data.process_pid && !processAlive) {
@@ -875,11 +993,11 @@ function summarizeJobRoot() {
       }
       if (status === "running" && data.task_hash && data.process_pid && processAlive) {
         const group = activeByTaskHash.get(data.task_hash) ?? [];
-        group.push(data.id ?? id);
+        group.push(id);
         activeByTaskHash.set(data.task_hash, group);
       }
       newestJobs.push({
-        job_id: data.id ?? id,
+      job_id: id,
         status,
         phase: data.phase ?? null,
         health_state: data.health?.state ?? null,
@@ -919,7 +1037,7 @@ function summarizeJobRoot() {
 
 function readJobStatusData(jobId) {
   try {
-    return JSON.parse(readFileSync(join(JOB_ROOT, jobId, "status.json"), "utf8"));
+    return JSON.parse(readFileSync(join(resolveJobDirectory(jobId), "status.json"), "utf8"));
   } catch {
     return null;
   }
@@ -953,6 +1071,7 @@ function alreadyRunningResult(job, prepared) {
 }
 
 function compactJobListItem(job, { includeHealth = true } = {}) {
+  refreshRestoredJobState(job);
   const idle = idleStatus(job);
   const health = includeHealth ? healthForJob(job, idle) : null;
   const result = job.result ?? {};
@@ -971,6 +1090,10 @@ function compactJobListItem(job, { includeHealth = true } = {}) {
     task_hash: job.task_hash ?? null,
     timeout_ms: job.timeout_ms ?? null,
     timeout_source: job.timeout_source ?? null,
+    model: job.model ?? null,
+    reasoning_effort: job.reasoning_effort ?? null,
+    max_budget_usd: job.max_budget_usd ?? null,
+    total_cost_usd: result.worker?.total_cost_usd ?? job.claude_result?.total_cost_usd ?? null,
     process_alive: Boolean(job.process_alive),
     process_pid: job.process_pid ?? null,
     restored_from_disk: Boolean(job.restored_from_disk),
@@ -1009,11 +1132,11 @@ function compactJobListItemFromStatus(jobId, data, { includeHealth = true } = {}
       permission_denials: includeHealth ? 0 : undefined,
     };
   }
-  const processAlive = persistedJobCanHaveLiveProcess(data.status) && data.process_pid && processPidAlive(data.process_pid);
+  const processAlive = persistedProcessAlive(data);
   const status = normalizedPersistedJobStatus(data, { processAlive });
   const changed = data.result?.change_count ?? arrayOfStrings(data.result?.files_changed).length;
   return {
-    job_id: data.id ?? jobId,
+    job_id: jobId,
     status,
     phase: status === "orphaned" ? "orphaned" : (data.phase ?? null),
     health_state: status === "orphaned" ? "orphaned_after_restart" : (data.health?.state ?? null),
@@ -1027,6 +1150,10 @@ function compactJobListItemFromStatus(jobId, data, { includeHealth = true } = {}
     task_hash: data.task_hash ?? null,
     timeout_ms: data.timeout_ms ?? null,
     timeout_source: data.timeout_source ?? null,
+    model: data.model ?? null,
+    reasoning_effort: data.reasoning_effort ?? null,
+    max_budget_usd: data.max_budget_usd ?? null,
+    total_cost_usd: data.result?.worker?.total_cost_usd ?? data.claude_result?.total_cost_usd ?? null,
     process_alive: Boolean(processAlive),
     process_pid: processAlive ? data.process_pid : null,
     restored_from_disk: true,
@@ -1041,7 +1168,7 @@ function compactJobListItemFromStatus(jobId, data, { includeHealth = true } = {}
 function normalizedPersistedJobStatus(data, { processAlive = false } = {}) {
   if (persistedJobCanHaveLiveProcess(data?.status) && !processAlive) return "orphaned";
   const resultStatus = data?.result?.status;
-  if (resultStatus === "partial_caller_timeout" || resultStatus === "partial_cancelled") return "partial";
+  if (typeof resultStatus === "string" && resultStatus.startsWith("partial_")) return "partial";
   const failureReason = data?.result?.failure_reason;
   if (failureReason === "caller_timeout_after_valid_changes" || failureReason === "cancelled_after_valid_changes") {
     return "partial";
@@ -1051,6 +1178,16 @@ function normalizedPersistedJobStatus(data, { processAlive = false } = {}) {
 
 function persistedJobCanHaveLiveProcess(status) {
   return status === "running" || status === "cancel_requested";
+}
+
+function persistedProcessAlive(data, now = Date.now()) {
+  if (!persistedJobCanHaveLiveProcess(data?.status) || !data.process_pid || !processPidAlive(data.process_pid)) {
+    return false;
+  }
+  const heartbeatMs = data.last_heartbeat_at_ms != null && Number.isFinite(Number(data.last_heartbeat_at_ms))
+    ? Number(data.last_heartbeat_at_ms)
+    : parseTimeMs(data.last_heartbeat_at ?? data.persisted_updated_at ?? data.updated_at);
+  return heartbeatMs != null && now - heartbeatMs <= RESTORED_JOB_STALE_AFTER_MS;
 }
 
 function diagnoseJob(job, options = {}) {
@@ -1196,7 +1333,7 @@ function inspectionTargetsForFindings(findings) {
 }
 
 function restoreJob(jobId) {
-  const jobDir = join(JOB_ROOT, jobId);
+  const jobDir = resolveJobDirectory(jobId);
   const statusPath = join(jobDir, "status.json");
   if (!existsSync(statusPath)) return null;
   let data;
@@ -1223,20 +1360,18 @@ function restoreJob(jobId) {
     };
   }
 
-  const processAlive = persistedJobCanHaveLiveProcess(data.status)
-    && data.process_pid
-    && processPidAlive(data.process_pid);
+  const processAlive = persistedProcessAlive(data);
   const orphaned = persistedJobCanHaveLiveProcess(data.status) && !processAlive;
   const restoredStatus = normalizedPersistedJobStatus(data, { processAlive });
   const job = {
-    id: data.id ?? jobId,
+    id: jobId,
     status: restoredStatus,
     started_at: data.started_at ?? null,
     started_ms: restoreStartedMs(data),
     persisted_updated_at: data.updated_at ?? null,
     updated_at: new Date().toISOString(),
     cwd: data.cwd ?? null,
-    before: deserializeSnapshot(data.before ?? readJsonIfExists(join(jobDir, "before-snapshot.json"))),
+    before: null,
     ignored_dirs: new Set([...DEFAULT_IGNORED_DIRS, ...arrayOfStrings(data.ignored_dirs)]),
     allowedRoots: arrayOfStrings(data.allowedRoots).length > 0
       ? arrayOfStrings(data.allowedRoots)
@@ -1250,10 +1385,13 @@ function restoreJob(jobId) {
     model: data.model ?? null,
     thinking: data.thinking ?? null,
     reasoning_effort: data.reasoning_effort ?? null,
+    max_budget_usd: data.max_budget_usd ?? null,
+    budget_source: data.budget_source ?? null,
+    enable_tool_search: Boolean(data.enable_tool_search),
     preset_requires_review: Boolean(data.preset_requires_review),
     verification_profile: data.verification_profile ?? null,
     permission_mode: data.permission_mode ?? null,
-    safety_mode: data.safety_mode ?? "permissive",
+    safety_mode: data.safety_mode ?? "safe",
     timeout_ms: data.timeout_ms ?? null,
     timeout_source: data.timeout_source ?? null,
     process_started_at_ms: data.process_started_at_ms ?? null,
@@ -1298,7 +1436,9 @@ function restoreJob(jobId) {
     last_tool_result_at: data.last_tool_result_at ?? null,
     last_tool_name: data.last_tool_name ?? null,
     last_successful_tool: data.last_successful_tool ?? null,
+    successful_tool_count: data.successful_tool_count ?? 0,
     last_failed_tool: data.last_failed_tool ?? null,
+    claude_result: data.claude_result ?? null,
     last_error_kind: orphaned ? "orphaned_after_mcp_restart" : (data.last_error_kind ?? null),
     tool_calls_since_last_change: data.tool_calls_since_last_change ?? 0,
     last_observed_change_count: data.last_observed_change_count ?? 0,
@@ -1310,6 +1450,23 @@ function restoreJob(jobId) {
     restored_from_disk: true,
   };
   if (orphaned) writeJobStatus(job);
+  return job;
+}
+
+function refreshRestoredJobState(job) {
+  if (!job?.restored_from_disk || !persistedJobCanHaveLiveProcess(job.status)) return job;
+  const processAlive = persistedProcessAlive(job);
+  job.process_alive = processAlive;
+  if (processAlive) return job;
+
+  job.status = "orphaned";
+  job.phase = "orphaned";
+  job.phase_message = "MCP restored this job from disk, but the recorded worker process is no longer alive. Treat artifacts as review-only.";
+  job.last_error_kind = "orphaned_after_mcp_restart";
+  job.error = { message: "Worker process was not recoverable after MCP restart.", data: null };
+  job.process_pid = null;
+  job.updated_at = new Date().toISOString();
+  writeJobStatus(job);
   return job;
 }
 
@@ -1335,6 +1492,9 @@ function createJob(jobId, jobDir, prepared) {
     model: prepared.args.model,
     thinking: prepared.args.thinking,
     reasoning_effort: prepared.args.reasoning_effort,
+    max_budget_usd: prepared.args.max_budget_usd,
+    budget_source: prepared.args.budget_source,
+    enable_tool_search: prepared.args.enable_tool_search,
     preset_requires_review: prepared.args.preset_requires_review,
     verification_profile: prepared.args.verification_profile,
     permission_mode: prepared.args.permission_mode,
@@ -1370,6 +1530,8 @@ function createJob(jobId, jobDir, prepared) {
       cwd: prepared.cwd,
       permission_mode: prepared.args.permission_mode,
       model: prepared.args.model,
+      reasoning_effort: prepared.args.reasoning_effort,
+      max_budget_usd: prepared.args.max_budget_usd,
       output_format: prepared.args.output_format,
       claude_settings_arg: prepared.claudeSettings ? "<claude-settings>" : null,
     }).args),
@@ -1388,7 +1550,9 @@ function createJob(jobId, jobDir, prepared) {
     last_tool_result_at: null,
     last_tool_name: null,
     last_successful_tool: null,
+    successful_tool_count: 0,
     last_failed_tool: null,
+    claude_result: null,
     last_error_kind: null,
     tool_calls_since_last_change: 0,
     last_observed_change_count: 0,
@@ -1430,6 +1594,9 @@ function startedJobResult(job, prepared) {
     model: job.model,
     thinking: job.thinking,
     reasoning_effort: job.reasoning_effort,
+    max_budget_usd: job.max_budget_usd,
+    budget_source: job.budget_source,
+    enable_tool_search: job.enable_tool_search,
     preset_requires_review: job.preset_requires_review,
     verification_profile: job.verification_profile,
     permission_mode: job.permission_mode,
@@ -1457,7 +1624,7 @@ function prepareImplementation(rawArgs, options = {}) {
 
   const allowedRoots = normalizeRoots(cwd, args.allowed_dirs);
   const forbiddenPaths = normalizeForbidden(cwd, args.forbidden_paths);
-  const before = snapshotWorkspace(cwd, args.ignored_dirs);
+  const before = snapshotWorkspace(cwd, args.ignored_dirs, forbiddenPaths);
 
   const workerPrompt = buildWorkerPrompt(args, allowedRoots, forbiddenPaths);
   const claudeSettings = buildClaudeSettings(args, cwd);
@@ -1475,6 +1642,13 @@ function taskFingerprint({ args, cwd, allowedRoots, forbiddenPaths }) {
     required_skills: [...args.required_skills].sort(),
     use_case: args.use_case,
     worker_profile: args.worker_profile,
+    model: args.model,
+    thinking: args.thinking,
+    reasoning_effort: args.reasoning_effort,
+    max_budget_usd: args.max_budget_usd,
+    enable_tool_search: args.enable_tool_search,
+    permission_mode: args.permission_mode,
+    safety_mode: args.safety_mode,
   };
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 24);
 }
@@ -1496,6 +1670,8 @@ async function runImplementationPrepared(prepared, job = null) {
     model: args.model,
     reasoning_effort: args.reasoning_effort,
     thinking: args.thinking,
+    max_budget_usd: args.max_budget_usd,
+    enable_tool_search: args.enable_tool_search,
     output_format: args.output_format,
     claude_settings: claudeSettings,
     required_skills: args.required_skills,
@@ -1503,7 +1679,7 @@ async function runImplementationPrepared(prepared, job = null) {
   });
 
   setJobPhase(job, "snapshotting", "Worker finished model execution; scanning workspace changes.");
-  const after = snapshotWorkspace(cwd, args.ignored_dirs);
+  const after = snapshotWorkspace(cwd, args.ignored_dirs, forbiddenPaths);
   const changes = diffSnapshots(before, after);
   const changedFiles = changes.map((change) => change.path).sort();
   const policy = evaluatePolicy({
@@ -1531,7 +1707,9 @@ async function runImplementationPrepared(prepared, job = null) {
       ? "Caller timeout stopped the worker after it produced policy-compliant changes. Treat as partial and review before trusting."
       : outcome.status === "partial_cancelled"
         ? "Cancellation stopped the worker after it produced policy-compliant changes. Treat as partial and review before trusting."
-      : "Worker finished, but the success contract was not satisfied.");
+        : outcome.status === "partial_worker_limit"
+          ? "Claude Code reached a budget or turn limit after valid changes. Treat as partial and review tool side effects before trusting."
+          : "Worker finished, but the success contract was not satisfied.");
 
   const { fileDiffs, diffAvailable } = computeFileDiffs(before, after, changes);
   const reviewSummary = buildReviewSummary({
@@ -1561,6 +1739,9 @@ async function runImplementationPrepared(prepared, job = null) {
     model: args.model,
     thinking: args.thinking,
     reasoning_effort: args.reasoning_effort,
+    max_budget_usd: args.max_budget_usd,
+    budget_source: args.budget_source,
+    enable_tool_search: args.enable_tool_search,
     preset_requires_review: args.preset_requires_review,
     verification_profile: args.verification_profile,
     required_skills: args.required_skills,
@@ -1582,6 +1763,15 @@ async function runImplementationPrepared(prepared, job = null) {
       events_seen: worker.events_seen,
       last_event_type: worker.last_event_type,
       last_event_summary: worker.last_event_summary,
+      final_result_subtype: worker.claude_result?.subtype ?? null,
+      final_result_is_error: worker.claude_result?.is_error ?? null,
+      final_text_present: worker.claude_result?.final_text_present ?? null,
+      limit_reason: worker.claude_result?.limit_reason ?? null,
+      total_cost_usd: worker.claude_result?.total_cost_usd ?? null,
+      num_turns: worker.claude_result?.num_turns ?? null,
+      models_used: worker.claude_result?.models_used ?? [],
+      successful_tool_count: worker.successful_tool_count ?? 0,
+      last_successful_tool: worker.last_successful_tool ?? null,
       stdout_tail: tail(worker.stdout),
       stderr_tail: tail(worker.stderr),
     },
@@ -1595,9 +1785,10 @@ function normalizeArgs(args, options = {}) {
   if (!args.cwd || typeof args.cwd !== "string") {
     throw new Error("cwd is required");
   }
-  if (!args.task || typeof args.task !== "string") {
+  if (!args.task || typeof args.task !== "string" || args.task.trim().length === 0) {
     throw new Error("task is required");
   }
+  const task = args.task.trim();
   const useCase = normalizeUseCase(args.use_case);
   const preset = USE_CASES[useCase];
   const worker_profile = normalizeWorkerProfile(args.worker_profile);
@@ -1607,6 +1798,17 @@ function normalizeArgs(args, options = {}) {
     : preset.model;
   const thinking = normalizeThinking(args.thinking ?? preset.thinking);
   const reasoning_effort = normalizeReasoningEffort(args.reasoning_effort ?? preset.reasoning_effort);
+  const max_budget_usd = normalizeOptionalNumber(
+    args.max_budget_usd,
+    preset.max_budget_usd ?? null,
+    "max_budget_usd",
+  );
+  const budget_source = args.max_budget_usd != null
+    ? "caller"
+    : max_budget_usd == null
+      ? "none"
+      : `use_case:${useCase}`;
+  const enable_tool_search = Boolean(args.enable_tool_search ?? false);
   const output_format = normalizeOutputFormat(args.output_format ?? preset.output_format);
   const verification_profile = normalizeVerificationProfile(args.verification_profile ?? preset.verification_profile);
   const allow_docs_only = Boolean(args.allow_docs_only ?? preset.allow_docs_only ?? false);
@@ -1626,11 +1828,13 @@ function normalizeArgs(args, options = {}) {
       : timeoutDefault == null
         ? "none"
         : `use_case:${useCase}`;
-  const idle_after_ms = Number(args.idle_after_ms ?? preset.idle_after_ms ?? DEFAULT_IDLE_AFTER_MS);
+  const idle_after_ms = positiveNumber(
+    args.idle_after_ms,
+    preset.idle_after_ms ?? DEFAULT_IDLE_AFTER_MS,
+    "idle_after_ms"
+  );
   const allowed_dirs = arrayOfStrings(args.allowed_dirs);
-  const forbidden_paths = arrayOfStrings(args.forbidden_paths).length > 0
-    ? arrayOfStrings(args.forbidden_paths)
-    : DEFAULT_FORBIDDEN_PATHS;
+  const forbidden_paths = [...new Set([...DEFAULT_FORBIDDEN_PATHS, ...arrayOfStrings(args.forbidden_paths)])];
   const permission_mode = args.permission_mode || profile.permission_mode;
   const safety_mode = normalizeSafetyMode(args.safety_mode);
   const required_skills = normalizeRequiredSkills(args.required_skills);
@@ -1647,7 +1851,7 @@ function normalizeArgs(args, options = {}) {
 
   return {
     cwd: args.cwd,
-    task: args.task,
+    task,
     use_case: useCase,
     worker_profile,
     allowed_dirs,
@@ -1657,7 +1861,7 @@ function normalizeArgs(args, options = {}) {
     ignored_dirs: new Set([...DEFAULT_IGNORED_DIRS, ...arrayOfStrings(args.ignored_dirs)]),
     timeout_ms,
     timeout_source,
-    check_timeout_ms: Number(args.check_timeout_ms ?? DEFAULT_CHECK_TIMEOUT_MS),
+    check_timeout_ms: positiveNumber(args.check_timeout_ms, DEFAULT_CHECK_TIMEOUT_MS, "check_timeout_ms"),
     idle_after_ms,
     allow_docs_only,
     allow_parallel,
@@ -1667,6 +1871,9 @@ function normalizeArgs(args, options = {}) {
     model,
     thinking,
     reasoning_effort,
+    max_budget_usd,
+    budget_source,
+    enable_tool_search,
     preset_requires_review,
     verification_profile,
     output_format,
@@ -1674,7 +1881,7 @@ function normalizeArgs(args, options = {}) {
 }
 
 function normalizeSafetyMode(value) {
-  if (value == null || value === "") return "permissive";
+  if (value == null || value === "") return "safe";
   if (value === "permissive" || value === "safe") return value;
   throw new Error("safety_mode must be permissive or safe");
 }
@@ -1731,6 +1938,7 @@ function buildWorkerPrompt(args, allowedRoots, forbiddenPaths) {
     profile.prompt,
     `CC-Switch model target: ${modelTarget}`,
     `Thinking mode: ${args.thinking}; reasoning effort: ${args.reasoning_effort}`,
+    `Claude Code budget limit request: ${args.max_budget_usd == null ? "none" : `$${args.max_budget_usd}`}; enforcement may occur after a model or tool turn; tool search: ${args.enable_tool_search ? "enabled" : "disabled"}`,
     `Verification profile: ${args.verification_profile}`,
     `Use-case guidance: ${useCase.prompt}`,
     verificationGuidance(args.verification_profile),
@@ -1836,6 +2044,8 @@ async function runPermissionHook() {
 function permissionDecision(input, config) {
   const tool = input.tool_name;
   const toolInput = input.tool_input ?? {};
+  const cwdDecision = toolWorkingDirectoryDecision(toolInput, config);
+  if (cwdDecision) return cwdDecision;
   if (tool === "Bash") return bashPermissionDecision(toolInput.command ?? "", config);
   if (tool === "Edit" || tool === "Write" || tool === "MultiEdit" || tool === "NotebookEdit") {
     return filePermissionDecision(toolInput, config, { write: true });
@@ -1843,6 +2053,33 @@ function permissionDecision(input, config) {
   if (tool === "Read" || tool === "NotebookRead") {
     return filePermissionDecision(toolInput, config, { write: false });
   }
+  if (tool === "Glob" || tool === "Grep") {
+    return searchPermissionDecision(toolInput, config);
+  }
+  return null;
+}
+
+function toolWorkingDirectoryDecision(toolInput, config) {
+  const requested = toolInput.cwd ?? toolInput.working_directory ?? null;
+  if (!requested) return null;
+  const workspace = policyPath(config.cwd ?? process.cwd());
+  const candidate = policyPath(resolve(workspace, requested));
+  if (!isInside(workspace, candidate)) return denyPermission(`Tool cwd resolves outside workspace: ${requested}`);
+  if (pathIsSensitive(candidate, workspace)) return denyPermission(`Tool cwd targets a sensitive path: ${requested}`);
+  return null;
+}
+
+function searchPermissionDecision(toolInput, config) {
+  const requested = toolInput.path ?? toolInput.directory ?? toolInput.root ?? config.cwd ?? process.cwd();
+  const workspace = policyPath(config.cwd ?? process.cwd());
+  const candidate = policyPath(resolve(workspace, requested));
+  if (!isInside(workspace, candidate)) return denyPermission(`Search resolves outside workspace: ${requested}`);
+  if (pathIsSensitive(candidate, workspace)) return denyPermission(`Search targets a sensitive path: ${requested}`);
+  const forbidden = (config.forbidden_paths ?? []).some((path) => {
+    const resolvedPath = policyPath(path);
+    return isInside(resolvedPath, candidate) || isInside(candidate, resolvedPath);
+  });
+  if (forbidden) return denyPermission(`Search overlaps a forbidden path: ${requested}`);
   return null;
 }
 
@@ -1986,11 +2223,16 @@ function hasShellWriteOrChaining(command) {
 function bashReadPathDecision(command, config) {
   for (const token of bashPathTokens(command)) {
     if (!token) continue;
-    const abs = resolve(config.cwd ?? process.cwd(), gitObjectPath(token));
-    const forbidden = (config.forbidden_paths ?? []).some((path) => isInside(path, abs) || isInside(abs, path));
+    const abs = policyPath(resolve(config.cwd ?? process.cwd(), gitObjectPath(token)));
+    const workspace = policyPath(config.cwd ?? process.cwd());
+    if (!isInside(workspace, abs)) return denyPermission(`Bash command resolves outside workspace: ${token}`);
+    const forbidden = (config.forbidden_paths ?? []).some((path) => {
+      const resolvedPath = policyPath(path);
+      return isInside(resolvedPath, abs) || isInside(abs, resolvedPath);
+    });
     if (forbidden) return denyPermission(`Bash command targets forbidden path: ${token}`);
     if (Array.isArray(config.allowed_dirs) && config.allowed_dirs.length > 0) {
-      const allowed = config.allowed_dirs.some((path) => isInside(path, abs));
+      const allowed = config.allowed_dirs.some((path) => isInside(policyPath(path), abs));
       if (!allowed) return denyPermission(`Bash command targets path outside allowed_dirs: ${token}`);
     }
   }
@@ -2437,14 +2679,22 @@ function filePermissionDecision(toolInput, config, { write }) {
   if (write && config.worker_profile === "review") {
     return denyPermission(`Write blocked by read-only review profile: ${file}`);
   }
-  const abs = resolve(config.cwd ?? process.cwd(), file);
-  const forbidden = (config.forbidden_paths ?? []).some((path) => isInside(path, abs));
+  const abs = policyPath(resolve(config.cwd ?? process.cwd(), file));
+  const workspace = policyPath(config.cwd ?? process.cwd());
+  if (!isInside(workspace, abs)) return denyPermission(`Access resolves outside workspace: ${file}`);
+  if (pathIsSensitive(abs, workspace)) return denyPermission(`Access to sensitive path blocked: ${file}`);
+  const forbidden = (config.forbidden_paths ?? []).some((path) => isInside(policyPath(path), abs));
   if (forbidden) return denyPermission(`Access to forbidden path blocked: ${file}`);
   if (write && Array.isArray(config.allowed_dirs) && config.allowed_dirs.length > 0) {
-    const allowed = config.allowed_dirs.some((path) => isInside(path, abs));
+    const allowed = config.allowed_dirs.some((path) => isInside(policyPath(path), abs));
     if (!allowed) return denyPermission(`Write outside allowed_dirs blocked: ${file}`);
   }
   return null;
+}
+
+function pathIsSensitive(candidate, workspace) {
+  const rel = normalizeRel(relative(workspace, candidate));
+  return rel.split("/").some((name) => isSensitiveFileName(name));
 }
 
 function isDangerousCommand(command) {
@@ -2467,7 +2717,10 @@ function appendToolActivity(input, config, decision = null) {
   const event = summarizeHookInput(input, config, decision);
   if (!event) return;
   try {
-    appendFileSync(config.tool_events_path, `${JSON.stringify(event)}\n`);
+    writeFileSync(config.tool_events_path, appendBounded(
+      readTextIfExists(config.tool_events_path),
+      `${JSON.stringify(event)}\n`,
+    ));
   } catch {
     // Hook logging must never block Claude Code tool execution.
   }
@@ -2498,8 +2751,8 @@ function summarizeHookInput(input, config = {}, decision = null) {
     if (typeof response.success === "boolean") summary.success = response.success;
   }
   if (typeof input.duration_ms === "number") summary.duration_ms = input.duration_ms;
-  if (typeof input.error === "string") summary.error = truncateValue(input.error, 240);
-  if (input.error && typeof input.error.message === "string") summary.error = truncateValue(input.error.message, 240);
+  if (typeof input.error === "string") summary.error = truncateValue(redactSecrets(input.error), 240);
+  if (input.error && typeof input.error.message === "string") summary.error = truncateValue(redactSecrets(input.error.message), 240);
   if (decision) {
     summary.permission_decision = decision.decision;
     summary.permission_reason = truncateValue(decision.reason, 240);
@@ -2519,11 +2772,18 @@ function displayPath(path, cwd) {
 
 function summarizeCommand(command) {
   if (typeof command !== "string") return null;
-  return truncateValue(command.replace(/\s+/g, " ").trim(), 240);
+  return truncateValue(redactSecrets(command).replace(/\s+/g, " ").trim(), 240);
 }
 
 function truncateValue(value, max) {
   return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+function redactSecrets(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/(["']?(?:api[_-]?key|token|password|secret|authorization)["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|Bearer\s+[^\s,;]+|[^\s,;]+)/gi, "$1<redacted>")
+    .replace(/\b(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b/g, "<redacted>");
 }
 
 function readStdin() {
@@ -2614,7 +2874,7 @@ function setJobPhase(job, phase, message) {
   writeJobStatus(job);
 }
 
-async function runClaudeCcSwitch({ cwd, prompt, timeout_ms, claude_cc_switch_bin, permission_mode, model, reasoning_effort, thinking, output_format, claude_settings, required_skills, job }) {
+async function runClaudeCcSwitch({ cwd, prompt, timeout_ms, claude_cc_switch_bin, permission_mode, model, reasoning_effort, thinking, max_budget_usd, enable_tool_search, output_format, claude_settings, required_skills, job }) {
   const resolvedClaudeCcSwitchBin = resolveExecutable(claude_cc_switch_bin);
   if (!resolvedClaudeCcSwitchBin) {
     throw new Error(`CC-Switch launcher executable not found: ${claude_cc_switch_bin}. Install or build a Claude-Code-compatible launcher, put it on PATH, or set CLAUDE_CC_SWITCH_BIN.`);
@@ -2627,6 +2887,8 @@ async function runClaudeCcSwitch({ cwd, prompt, timeout_ms, claude_cc_switch_bin
     cwd,
     permission_mode,
     model,
+    reasoning_effort,
+    max_budget_usd,
     output_format,
     claude_settings_arg: claudeSettingsArg,
     skill_scope_root: skillScopeRoot,
@@ -2639,6 +2901,7 @@ async function runClaudeCcSwitch({ cwd, prompt, timeout_ms, claude_cc_switch_bin
     CLAUDE_CODE_EFFORT_LEVEL: reasoning_effort || DEFAULT_REASONING_EFFORT,
     CC_SWITCH_THINKING_MODE: thinking,
   };
+  if (enable_tool_search) extraEnv.ENABLE_TOOL_SEARCH = "true";
   if (effectiveClaudeSettings) {
     extraEnv.CC_SWITCH_WORKER_HOOK_CONFIG = JSON.stringify({
       cwd,
@@ -2646,7 +2909,7 @@ async function runClaudeCcSwitch({ cwd, prompt, timeout_ms, claude_cc_switch_bin
       forbidden_paths: job?.forbiddenPaths ?? [],
       checks: job?.checks ?? [],
       worker_profile: job?.worker_profile ?? null,
-      safety_mode: job?.safety_mode ?? "permissive",
+      safety_mode: job?.safety_mode ?? "safe",
       tool_events_path: job?.job_dir ? join(job.job_dir, "tool-events.jsonl") : null,
     });
   }
@@ -2662,6 +2925,7 @@ async function runClaudeCcSwitch({ cwd, prompt, timeout_ms, claude_cc_switch_bin
       parse_stream_json: output_format === "stream-json",
       output_format,
       env: extraEnv,
+      unset_env: enable_tool_search ? [] : ["ENABLE_TOOL_SEARCH"],
     });
   } finally {
     if (skillScopeRoot) {
@@ -2725,7 +2989,7 @@ function nodeScriptInvocation(command, args) {
   return { command, args, previewArgs: args };
 }
 
-function buildClaudeCcSwitchInvocation({ prompt, cwd, permission_mode, model, output_format, claude_settings_arg = null, skill_scope_root = null }) {
+function buildClaudeCcSwitchInvocation({ prompt, cwd, permission_mode, model, reasoning_effort = null, max_budget_usd = null, output_format, claude_settings_arg = null, skill_scope_root = null }) {
   const args = [
     "-p",
     "--bare",
@@ -2754,6 +3018,8 @@ function buildClaudeCcSwitchInvocation({ prompt, cwd, permission_mode, model, ou
     args.push("--include-partial-messages");
   }
   if (model) args.push("--model", model);
+  if (reasoning_effort) args.push("--effort", reasoning_effort);
+  if (max_budget_usd != null) args.push("--max-budget-usd", String(max_budget_usd));
   return { args, stdin_text: prompt };
 }
 
@@ -2799,12 +3065,14 @@ function directCheckInvocation(command) {
   };
 }
 
-function runProcess(command, args, { cwd, timeout_ms = null, job = null, stream_name = "process", env = null, invocation_preview = null, stdin_text = null, parse_stream_json = false, output_format = "text" }) {
+function runProcess(command, args, { cwd, timeout_ms = null, job = null, stream_name = "process", env = null, unset_env = [], invocation_preview = null, stdin_text = null, parse_stream_json = false, output_format = "text" }) {
   return new Promise((resolvePromise) => {
+    const processEnv = minimalSubprocessEnvironment(env);
+    for (const name of unset_env) delete processEnv[name];
     const child = spawn(command, args, {
       cwd,
       stdio: [stdin_text == null ? "ignore" : "pipe", "pipe", "pipe"],
-      env: env ? { ...process.env, ...env } : process.env,
+      env: processEnv,
     });
     const processStarted = new Date();
     if (job) {
@@ -2833,6 +3101,7 @@ function runProcess(command, args, { cwd, timeout_ms = null, job = null, stream_
     let lastEventType = null;
     let lastEventSummary = null;
     let stdoutBuffer = "";
+    let claudeResult = null;
     let settled = false;
     let spawnError = null;
     const heartbeat = startJobHeartbeat(job);
@@ -2844,8 +3113,7 @@ function runProcess(command, args, { cwd, timeout_ms = null, job = null, stream_
         job.last_error_kind = "caller_timeout";
       }
       setJobPhase(job, "caller_timeout", "Caller-provided timeout elapsed; stopping the worker process and reviewing artifacts.");
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5000).unref();
+      terminateChildProcess(child);
     }, timeout_ms);
     if (stdin_text != null && child.stdin) {
       child.stdin.on("error", (error) => {
@@ -2873,7 +3141,22 @@ function runProcess(command, args, { cwd, timeout_ms = null, job = null, stream_
           job.error = errorResult(error);
         }
       }
+      if (stdoutBuffer.trim()) {
+        try {
+          const pendingEvent = JSON.parse(stdoutBuffer.trim());
+          claudeResult = claudeResultMetadata(pendingEvent) ?? claudeResult;
+          if (parse_stream_json) {
+            eventsSeen++;
+            lastEventType = pendingEvent.type ?? pendingEvent.event ?? null;
+            lastEventSummary = summarizeClaudeEvent(pendingEvent);
+            recordClaudeEvent(job, pendingEvent, lastEventSummary);
+          }
+        } catch {
+          // Keep process and file evidence when Claude emits non-JSON diagnostics.
+        }
+      }
       if (job) {
+        job.claude_result = claudeResult ?? job.claude_result ?? null;
         job.updated_at = new Date().toISOString();
         job.child = null;
         job.process_alive = false;
@@ -2893,32 +3176,48 @@ function runProcess(command, args, { cwd, timeout_ms = null, job = null, stream_
         events_seen: eventsSeen,
         last_event_type: lastEventType,
         last_event_summary: lastEventSummary,
+        claude_result: claudeResult,
+        successful_tool_count: job?.successful_tool_count ?? 0,
+        last_successful_tool: job?.last_successful_tool ?? null,
       });
     };
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString("utf8");
-      stdout = appendBounded(stdout, text);
-      appendJobLog(job, "stdout", text);
+      const safeText = redactSecrets(text);
+      stdout = appendBounded(stdout, safeText);
+      appendJobLog(job, "stdout", safeText);
+      stdoutBuffer += text;
       if (parse_stream_json) {
-        stdoutBuffer += text;
         const parsed = consumeJsonLines(stdoutBuffer, (event) => {
           eventsSeen++;
           lastEventType = event.type ?? event.event ?? null;
           lastEventSummary = summarizeClaudeEvent(event);
+          claudeResult = claudeResultMetadata(event) ?? claudeResult;
           recordClaudeEvent(job, event, lastEventSummary);
         });
         stdoutBuffer = parsed.remainder;
       }
     });
     child.stderr.on("data", (chunk) => {
-      const text = chunk.toString("utf8");
+      const text = redactSecrets(chunk.toString("utf8"));
       stderr = appendBounded(stderr, text);
       appendJobLog(job, "stderr", text);
     });
     child.on("error", (error) => finish({ error }));
     child.on("close", (code, signal) => finish({ code, signal }));
   });
+}
+
+function minimalSubprocessEnvironment(overrides = null) {
+  const result = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (SUBPROCESS_ENV_ALLOWLIST.has(name) && value != null) result[name] = value;
+  }
+  for (const [name, value] of Object.entries(overrides ?? {})) {
+    if (value != null) result[name] = String(value);
+  }
+  return result;
 }
 
 function startJobHeartbeat(job) {
@@ -2936,13 +3235,13 @@ function startJobHeartbeat(job) {
   return timer;
 }
 
-function snapshotWorkspace(cwd, ignoredDirs) {
+function snapshotWorkspace(cwd, ignoredDirs, forbiddenPaths = []) {
   const files = new Map();
-  walk(cwd, cwd, ignoredDirs, files);
+  walk(cwd, cwd, ignoredDirs, forbiddenPaths, files);
   return files;
 }
 
-function walk(root, current, ignoredDirs, files) {
+function walk(root, current, ignoredDirs, forbiddenPaths, files) {
   let entries;
   try {
     entries = readdirSync(current, { withFileTypes: true });
@@ -2952,9 +3251,10 @@ function walk(root, current, ignoredDirs, files) {
   for (const entry of entries) {
     const full = resolve(current, entry.name);
     const rel = normalizeRel(relative(root, full));
+    if (snapshotPathExcluded(full, rel, forbiddenPaths)) continue;
     if (entry.isDirectory()) {
       if (ignoredDirs.has(entry.name)) continue;
-      walk(root, full, ignoredDirs, files);
+      walk(root, full, ignoredDirs, forbiddenPaths, files);
       continue;
     }
     if (!entry.isFile()) continue;
@@ -3034,13 +3334,20 @@ async function gitSummary(cwd) {
 
 function failureReason({ changedFiles, policy, checkFailures, worker }) {
   if (worker.spawn_error) return "worker_spawn_error";
-  if (worker.cancelled && changedFiles.length === 0) return "worker_cancelled";
-  if (worker.timed_out && changedFiles.length === 0) return "caller_timeout_no_valid_changes";
-  if (worker.exit_code !== 0 && !worker.timed_out && !worker.cancelled) return "worker_exit_nonzero";
-  if (changedFiles.length === 0) return "no_code_changed";
   if (policy.forbidden_changed.length > 0) return "changed_forbidden_paths";
   if (policy.outside_allowed.length > 0) return "changed_outside_allowed_dirs";
   if (checkFailures.length > 0) return "checks_failed";
+  const limit = worker.claude_result?.limit_reason;
+  if (limit && changedFiles.length === 0 && (worker.successful_tool_count ?? 0) > 0) return `${limit}_after_tool_success`;
+  if (limit && changedFiles.length === 0) return `${limit}_no_valid_changes`;
+  if (worker.cancelled && changedFiles.length === 0) return "worker_cancelled";
+  if (worker.timed_out && changedFiles.length === 0) return "caller_timeout_no_valid_changes";
+  if (worker.exit_code !== 0 && !worker.timed_out && !worker.cancelled) {
+    return (worker.successful_tool_count ?? 0) > 0 && worker.claude_result?.final_text_present === false
+      ? "worker_exited_after_tool_success_without_final_text"
+      : "worker_exit_nonzero";
+  }
+  if (changedFiles.length === 0) return "no_code_changed";
   if (worker.cancelled) return "cancelled_after_valid_changes";
   if (worker.timed_out) return "caller_timeout_after_valid_changes";
   return null;
@@ -3049,6 +3356,16 @@ function failureReason({ changedFiles, policy, checkFailures, worker }) {
 function classifyOutcome({ changedFiles, policy, checkFailures, worker, presetRequiresReview = false }) {
   const baseFailure = failureReason({ changedFiles, policy, checkFailures, worker });
   const validChanges = changedFiles.length > 0 && policy.ok && checkFailures.length === 0;
+  const limit = worker.claude_result?.limit_reason;
+  if (validChanges && limit) {
+    return {
+      status: "partial_worker_limit",
+      partial: true,
+      requires_review: true,
+      review_hint: "Claude Code reached its budget or turn limit after policy-compliant changes. Tool side effects can occur before the terminal limit event; review the diff and rerun incomplete checks before accepting.",
+      failure_reason: `${limit}_after_valid_changes`,
+    };
+  }
   if (validChanges && !worker.timed_out && worker.exit_code === 0 && !worker.cancelled) {
     return {
       status: "changed_files",
@@ -3093,13 +3410,12 @@ function classifyOutcome({ changedFiles, policy, checkFailures, worker, presetRe
 
 function isAcceptedResultStatus(status) {
   return status === "changed_files"
-    || status === "partial_caller_timeout"
-    || status === "partial_cancelled";
+    || (typeof status === "string" && status.startsWith("partial_"));
 }
 
 function terminalJobStatus(resultStatus) {
   if (resultStatus === "changed_files") return "completed";
-  if (resultStatus === "partial_caller_timeout" || resultStatus === "partial_cancelled") return "partial";
+  if (typeof resultStatus === "string" && resultStatus.startsWith("partial_")) return "partial";
   return "failed";
 }
 
@@ -3115,6 +3431,13 @@ function workerStatus(job, options = {}) {
   const worker = {
     output_format: job.output_format,
     last_error_kind: job.last_error_kind ?? null,
+    final_result_subtype: job.claude_result?.subtype ?? null,
+    final_text_present: job.claude_result?.final_text_present ?? null,
+    limit_reason: job.claude_result?.limit_reason ?? null,
+    total_cost_usd: job.claude_result?.total_cost_usd ?? null,
+    num_turns: job.claude_result?.num_turns ?? null,
+    models_used: job.claude_result?.models_used ?? [],
+    successful_tool_count: job.successful_tool_count ?? 0,
     tool_activity: toolActivitySummary(job),
   };
   if (options.include_logs) {
@@ -3201,6 +3524,15 @@ function resultForOutput(result, options = {}) {
       events_seen: result.worker.events_seen,
       last_event_type: result.worker.last_event_type,
       last_event_summary: result.worker.last_event_summary,
+      final_result_subtype: result.worker.final_result_subtype,
+      final_result_is_error: result.worker.final_result_is_error,
+      final_text_present: result.worker.final_text_present,
+      limit_reason: result.worker.limit_reason,
+      total_cost_usd: result.worker.total_cost_usd,
+      num_turns: result.worker.num_turns,
+      models_used: result.worker.models_used,
+      successful_tool_count: result.worker.successful_tool_count,
+      last_successful_tool: result.worker.last_successful_tool,
     };
     if (options.include_logs) {
       output.worker.claude_args_preview = result.worker.claude_args_preview;
@@ -3401,6 +3733,7 @@ function sleep(ms) {
 }
 
 function progressForJob(job) {
+  refreshRestoredJobState(job);
   const idle = idleStatus(job);
   const base = {
     status: job.status,
@@ -3626,6 +3959,7 @@ function recordClaudeEvent(job, event, summary) {
   const nowIso = now.toISOString();
   if (job.pending_tool_use && isModelResumedAfterTool(detail)) {
     job.last_successful_tool = job.pending_tool_use;
+    job.successful_tool_count = (job.successful_tool_count ?? 0) + 1;
     job.last_tool_result_at = nowIso;
     job.last_tool_result_inferred = true;
     job.pending_tool_use = null;
@@ -3661,6 +3995,7 @@ function recordClaudeEvent(job, event, summary) {
       job.last_error_kind = "tool_result_error";
     } else {
       job.last_successful_tool = job.last_tool_name;
+      job.successful_tool_count = (job.successful_tool_count ?? 0) + 1;
     }
   } else if (detail.kind === "error_result") {
     job.last_error_kind = "model_result_error";
@@ -3668,6 +4003,7 @@ function recordClaudeEvent(job, event, summary) {
     job.pending_tool_use = null;
     job.streaming_tool_input = null;
   }
+  job.claude_result = claudeResultMetadata(event) ?? job.claude_result ?? null;
   job.last_output_at_ms = now.getTime();
   job.last_output_at = now.toISOString();
   job.stream_events = [...(job.stream_events ?? []), compactClaudeEvent(event, summary)].slice(-MAX_STREAM_EVENTS);
@@ -3688,14 +4024,16 @@ function isModelResumedAfterTool(detail) {
 
 function appendJobLog(job, stream, text) {
   if (!job) return;
-  if (stream === "stdout") job.stdout = appendBounded(job.stdout ?? "", text);
-  if (stream === "stderr") job.stderr = appendBounded(job.stderr ?? "", text);
+  const safeText = redactSecrets(text);
+  if (stream === "stdout") job.stdout = appendBounded(job.stdout ?? "", safeText);
+  if (stream === "stderr") job.stderr = appendBounded(job.stderr ?? "", safeText);
   const now = new Date();
   job.updated_at = now.toISOString();
   job.last_output_at_ms = now.getTime();
   job.last_output_at = now.toISOString();
   if (job.job_dir) {
-    appendFileSync(join(job.job_dir, `${stream}.log`), text);
+    const logPath = join(job.job_dir, `${stream}.log`);
+    writeFileSync(logPath, appendBounded(readTextIfExists(logPath), safeText));
     writeJobStatus(job);
   }
 }
@@ -3718,6 +4056,9 @@ function writeJobStatus(job) {
     model: job.model,
     thinking: job.thinking,
     reasoning_effort: job.reasoning_effort,
+    max_budget_usd: job.max_budget_usd ?? null,
+    budget_source: job.budget_source ?? null,
+    enable_tool_search: Boolean(job.enable_tool_search),
     preset_requires_review: job.preset_requires_review,
     verification_profile: job.verification_profile,
     permission_mode: job.permission_mode,
@@ -3764,7 +4105,9 @@ function writeJobStatus(job) {
     last_tool_result_at: job.last_tool_result_at,
     last_tool_result_inferred: Boolean(job.last_tool_result_inferred),
     last_successful_tool: job.last_successful_tool,
+    successful_tool_count: job.successful_tool_count ?? 0,
     last_failed_tool: job.last_failed_tool,
+    claude_result: job.claude_result ?? null,
     last_error_kind: job.last_error_kind,
     tool_calls_since_last_change: job.tool_calls_since_last_change,
     ...pendingToolDuration(job),
@@ -3799,7 +4142,7 @@ function implementationSchema() {
         type: "string",
         enum: Object.keys(USE_CASES),
         description:
-          "Model/task preset. Defaults to auto: reasoning_effort=max, thinking enabled, for ordinary implementation. Use fast_patch for tiny edits, scaffold_or_tests for tests/glue, debug_loop for reproduce/fix/check, and agentic_coding/complex_reasoning/long_context_codebase for stronger work that needs broad context or hard reasoning. The CC-Switch-selected model is used unless overridden via model.",
+          "Task/cost preset. Defaults to auto: current CC-Switch route, reasoning_effort=high, thinking enabled, and a bounded API budget. fast_patch uses low effort and a smaller budget; complex_reasoning uses max effort and a larger budget.",
       },
       worker_profile: {
         type: "string",
@@ -3844,7 +4187,7 @@ function implementationSchema() {
         description:
           "Async start safety valve. Defaults to false: if an active job with the same cwd, task, allowed paths, forbidden paths, checks, use_case, and worker_profile is already running, start returns already_running instead of launching a duplicate worker. Set allow_parallel=true only when duplicate parallel execution is intentional.",
       },
-      model: { type: "string", description: "Model override passed to claude-cc-switch. When omitted, the CC-Switch-selected model is used. Prefer use_case unless the caller has a specific model reason." },
+      model: { type: "string", description: "Optional model selector passed to claude-cc-switch. When omitted, CC-Switch keeps its current provider route. This selector and Claude result model identifiers do not prove the underlying provider model." },
       thinking: {
         type: "string",
         enum: ["enabled", "disabled"],
@@ -3852,8 +4195,16 @@ function implementationSchema() {
       },
       reasoning_effort: {
         type: "string",
-        enum: ["high", "max"],
-        description: "CC-Switch thinking strength hint. Default auto and complex use cases use max.",
+        enum: ["low", "medium", "high", "xhigh", "max"],
+        description: "Claude Code effort level passed via --effort. Defaults from use_case.",
+      },
+      max_budget_usd: {
+        type: "number",
+        description: "Positive budget limit request passed to Claude Code via --max-budget-usd. Defaults from use_case. Enforcement can occur after a model or tool turn, so reported cost may exceed the request and limit results with changes are partial.",
+      },
+      enable_tool_search: {
+        type: "boolean",
+        description: "Allow inherited Claude ToolSearch behavior for this worker. Defaults to false so low-risk jobs do not spend a turn discovering tools before the task.",
       },
       verification_profile: {
         type: "string",
@@ -3875,7 +4226,7 @@ function implementationSchema() {
       safety_mode: {
         type: "string",
         enum: ["permissive", "safe"],
-        description: "Bash policy for workers. Defaults to permissive: allow Bash except clearly dangerous commands and forbidden paths. Use safe to inject settings/hooks, restrict Bash to read-only locator commands plus explicit checks, and avoid approval-retry loops.",
+        description: "Bash policy for workers. Defaults to safe: inject settings/hooks, restrict Bash to read-only locator commands plus explicit checks, and keep all file/search tools inside the job workspace. permissive must be requested explicitly.",
       },
       claude_cc_switch_bin: { type: "string", description: "Path to claude-cc-switch executable." },
       ignored_dirs: {
@@ -3950,8 +4301,8 @@ function normalizeThinking(value) {
 }
 
 function normalizeReasoningEffort(value) {
-  if (value === "high" || value === "max") return value;
-  throw new Error("reasoning_effort must be one of: high, max");
+  if (["low", "medium", "high", "xhigh", "max"].includes(value)) return value;
+  throw new Error("reasoning_effort must be one of: low, medium, high, xhigh, max");
 }
 
 function normalizeOutputFormat(value) {
@@ -3965,11 +4316,11 @@ function normalizeVerificationProfile(value) {
   throw new Error("verification_profile must be one of: smoke, standard, debug, review, docs");
 }
 
-function normalizeOptionalNumber(value, fallback = null) {
+function normalizeOptionalNumber(value, fallback = null, label = "timeout_ms") {
   if (value == null) return fallback;
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) {
-    throw new Error("timeout_ms must be a positive number when provided");
+    throw new Error(`${label} must be a positive number when provided`);
   }
   return number;
 }
@@ -4000,6 +4351,39 @@ function isInside(root, candidate) {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+function policyPath(path) {
+  const target = resolve(path);
+  let ancestor = target;
+  while (!existsSync(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) return target;
+    ancestor = parent;
+  }
+  try {
+    return resolve(realpathSync.native(ancestor), relative(ancestor, target));
+  } catch {
+    return target;
+  }
+}
+
+function snapshotPathExcluded(full, rel, forbiddenPaths) {
+  const names = normalizeRel(rel).split("/");
+  if (names.some((name) => isSensitiveFileName(name))) return true;
+  const candidate = policyPath(full);
+  return forbiddenPaths.some((path) => {
+    const forbidden = policyPath(path);
+    return isInside(forbidden, candidate) || isInside(candidate, forbidden);
+  });
+}
+
+function isSensitiveFileName(name) {
+  const lower = String(name).toLowerCase();
+  return lower === ".env"
+    || lower.startsWith(".env.")
+    || ["auth.json", "credentials.json", "cookies.json", ".npmrc", ".pypirc"].includes(lower)
+    || /^(id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.(pem|key|p12|pfx|jks|keystore))$/.test(lower);
+}
+
 function isDocPath(path) {
   const lower = path.toLowerCase();
   return lower.startsWith("docs/")
@@ -4017,12 +4401,20 @@ function arrayOfStrings(value) {
 
 function serializeSnapshot(snapshot) {
   if (!(snapshot instanceof Map)) return [];
-  return [...snapshot.entries()];
+  return [...snapshot.entries()].map(([path, metadata]) => [path, snapshotMetadata(metadata)]);
 }
 
 function deserializeSnapshot(value) {
   if (!Array.isArray(value)) return null;
-  return new Map(value.filter((entry) => Array.isArray(entry) && entry.length === 2));
+  return new Map(value
+    .filter((entry) => Array.isArray(entry) && entry.length === 2)
+    .map(([path, metadata]) => [path, snapshotMetadata(metadata)]));
+}
+
+function snapshotMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") return metadata;
+  const { content: _content, ...safe } = metadata;
+  return safe;
 }
 
 function readTextIfExists(path) {

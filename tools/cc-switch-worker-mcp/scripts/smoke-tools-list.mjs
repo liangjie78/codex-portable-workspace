@@ -45,7 +45,7 @@ const checks = {
   start_mentions_one_worker_per_task: /one clearly scoped implementation task/.test(start?.description ?? "")
     && /Do not start a second worker for the same task while the first job is running/.test(start?.description ?? ""),
   start_avoids_polling_instruction: !/poll compact status with cc_switch_get_job/.test(start?.description ?? ""),
-  start_mentions_default_max: /reasoning_effort=max/.test(start?.description ?? ""),
+  start_mentions_bounded_default: /sonnet\/high with a bounded API budget/.test(start?.description ?? ""),
   start_has_title: start?.title === "Start CC-Switch worker job",
   start_has_output_schema: start?.outputSchema?.type === "object",
   get_mentions_omit_evidence: /omits stdout\/stderr, stream events, per-file diffs/.test(get?.description ?? ""),
@@ -64,7 +64,10 @@ const checks = {
     && schema.required_skills?.type === "array",
   allow_parallel_schema_mentions_duplicate_guard: /already running/.test(schema.allow_parallel?.description ?? "")
     && /allow_parallel=true/.test(schema.allow_parallel?.description ?? ""),
-  use_case_schema_mentions_auto_max: /Defaults to auto.*reasoning_effort=max/.test(schema.use_case?.description ?? ""),
+  use_case_schema_mentions_bounded_auto: /Defaults to auto.*current CC-Switch route.*bounded API budget/.test(schema.use_case?.description ?? ""),
+  cost_controls_are_exposed: schema.max_budget_usd?.type === "number"
+    && schema.enable_tool_search?.type === "boolean"
+    && schema.reasoning_effort?.enum?.includes("low"),
   start_schema_hides_poll_after: schema.poll_after_ms == null,
   no_extra_properties: start?.inputSchema?.additionalProperties === false,
 };

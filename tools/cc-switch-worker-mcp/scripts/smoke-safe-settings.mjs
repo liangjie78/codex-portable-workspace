@@ -9,12 +9,18 @@ const root = mkdtempSync(join(tmpdir(), "cc-switch-worker-safe-settings-"));
 const cwd = join(root, "workspace");
 const fakeLauncher = join(root, "fake-claude-cc-switch.mjs");
 const argsOut = join(root, "launcher-args.json");
+const envOut = join(root, "launcher-env-keys.json");
 mkdirSync(cwd, { recursive: true });
 writeFileSync(join(cwd, "index.js"), "export const value = 1;\n");
+writeFileSync(join(cwd, ".env.local"), "SYNTHETIC_ONLY=not-a-real-secret\n");
+writeFileSync(join(cwd, "synthetic.key"), "not a real key\n");
+mkdirSync(join(cwd, "private"), { recursive: true });
+writeFileSync(join(cwd, "private", "ignored.txt"), "synthetic private fixture\n");
 writeFileSync(fakeLauncher, [
   "#!/usr/bin/env node",
   "import { writeFileSync } from 'node:fs';",
-  "writeFileSync(process.env.CC_SWITCH_SAFE_SETTINGS_ARGS, JSON.stringify(process.argv.slice(2)));",
+  `writeFileSync(${JSON.stringify(argsOut)}, JSON.stringify(process.argv.slice(2)));`,
+  `writeFileSync(${JSON.stringify(envOut)}, JSON.stringify(Object.keys(process.env).sort()));`,
   "setTimeout(() => process.exit(0), 50);",
   "",
 ].join("\n"));
@@ -25,7 +31,7 @@ const server = spawn("node", ["src/cc-switch-worker-mcp.mjs"], {
   stdio: ["pipe", "pipe", "pipe"],
   env: {
     ...process.env,
-    CC_SWITCH_SAFE_SETTINGS_ARGS: argsOut,
+    UNRELATED_SECRET_TEST: "synthetic-value-that-must-not-reach-worker",
   },
 });
 
@@ -52,10 +58,10 @@ try {
       use_case: "fast_patch",
       worker_profile: "scoped_patch",
       allowed_dirs: ["."],
+      forbidden_paths: ["private"],
       checks: ["node --check index.js"],
       claude_cc_switch_bin: fakeLauncher,
       permission_mode: "acceptEdits",
-      safety_mode: "safe",
       timeout_ms: 5000,
     },
   });
@@ -69,6 +75,9 @@ try {
   const waited = parseToolPayload(await waitForResponseId(3, 7000));
 
   const launcherArgs = existsSync(argsOut) ? JSON.parse(readFileSync(argsOut, "utf8")) : [];
+  const launcherEnvKeys = existsSync(envOut) ? JSON.parse(readFileSync(envOut, "utf8")) : [];
+  const persistedSnapshot = JSON.parse(readFileSync(join(started.job_dir, "before-snapshot.json"), "utf8"));
+  const persistedPaths = persistedSnapshot.map(([path]) => path);
   const settingsIndex = launcherArgs.indexOf("--settings");
   const settingsArg = settingsIndex >= 0 ? launcherArgs[settingsIndex + 1] : null;
   const settings = settingsArg && existsSync(settingsArg)
@@ -77,13 +86,25 @@ try {
   const failures = [];
 
   if (started.status !== "started" || started.permission_mode !== "acceptEdits" || started.safety_mode !== "safe") {
-    failures.push({ name: "job starts with acceptEdits safe mode", actual: started });
+    failures.push({ name: "safe mode is the default", actual: started.safety_mode });
   }
   if (started.claude_settings_active !== true) {
     failures.push({ name: "safe mode injects settings for acceptEdits", actual: started.claude_settings_active });
   }
   if (!settings?.permissions?.allow?.includes("Bash(node --check index.js)")) {
     failures.push({ name: "requested check is allow-listed", actual: settings?.permissions?.allow });
+  }
+  if (!settings?.permissions?.deny?.some((entry) => entry.includes(".env"))) {
+    failures.push({ name: "mandatory forbidden paths survive caller overrides", actual: settings?.permissions?.deny });
+  }
+  if (persistedPaths.some((path) => path === ".env.local" || path === "synthetic.key" || path.startsWith("private/"))) {
+    failures.push({ name: "snapshot excludes sensitive and forbidden paths", actual: persistedPaths });
+  }
+  if (persistedSnapshot.some(([, metadata]) => Object.hasOwn(metadata ?? {}, "content"))) {
+    failures.push({ name: "persisted snapshots contain hashes and metadata only", actual: persistedSnapshot });
+  }
+  if (launcherEnvKeys.includes("UNRELATED_SECRET_TEST")) {
+    failures.push({ name: "worker subprocess receives a minimal environment", actual: launcherEnvKeys });
   }
   if (settings?.permissions?.allow?.includes("Bash(rg *)") || settings?.permissions?.allow?.includes("Bash(sed -n *)")) {
     failures.push({ name: "safe mode does not allow broad readonly Bash", actual: settings?.permissions?.allow });
@@ -109,6 +130,8 @@ try {
     has_settings_arg: settingsIndex >= 0,
     settings_is_file: Boolean(settingsArg && !settingsArg.trim().startsWith("{") && existsSync(settingsArg)),
     allow_has_check: settings?.permissions?.allow?.includes("Bash(node --check index.js)") ?? false,
+    snapshot_paths: persistedPaths,
+    subprocess_env_key_count: launcherEnvKeys.length,
     failures,
   }, null, 2));
   if (stderr) process.stderr.write(stderr);

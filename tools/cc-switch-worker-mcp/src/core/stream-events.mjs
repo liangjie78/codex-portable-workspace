@@ -96,6 +96,39 @@ export function classifyClaudeEvent(event) {
   return { type, subtype, kind: subtype ?? type, tool_name: toolName };
 }
 
+export function claudeResultMetadata(event) {
+  const payload = claudeEventPayload(event);
+  if (!payload || payload.type !== "result") return null;
+  const subtype = payload.subtype ?? null;
+  const resultText = typeof payload.result === "string"
+    ? payload.result
+    : typeof payload.message?.result === "string"
+      ? payload.message.result
+      : "";
+  const modelUsage = payload.modelUsage ?? payload.model_usage;
+  return {
+    subtype,
+    is_error: Boolean(payload.is_error) || String(subtype).startsWith("error_"),
+    limit_reason: subtype === "error_max_budget_usd"
+      ? "budget_exhausted"
+      : subtype === "error_max_turns"
+        ? "turn_limit"
+        : null,
+    total_cost_usd: finiteNumber(payload.total_cost_usd),
+    num_turns: finiteNumber(payload.num_turns),
+    duration_ms: finiteNumber(payload.duration_ms),
+    duration_api_ms: finiteNumber(payload.duration_api_ms),
+    final_text_present: resultText.trim().length > 0,
+    models_used: modelUsage && typeof modelUsage === "object" ? Object.keys(modelUsage) : [],
+  };
+}
+
 function claudeEventPayload(event) {
   return event?.event && typeof event.event === "object" ? event.event : event;
+}
+
+function finiteNumber(value) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }

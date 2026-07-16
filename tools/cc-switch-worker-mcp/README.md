@@ -12,6 +12,8 @@ The goal is to save Codex main-thread context on real engineering tasks. It is n
 - Supports async job lifecycle tools: start, get, list, diagnose, tail, wait, and cancel.
 - Records compact progress facts such as heartbeat, health state, changed files, checks, and policy results.
 - Provides safe-mode permission hooks for bounded read/edit/check workflows.
+- Defaults to safe mode, always merges mandatory forbidden paths, and confines Read/Write/Glob/Grep plus tool working directories to the job workspace.
+- Applies per-use-case effort and budget defaults, disables inherited ToolSearch unless requested, and records Claude result limit/cost metadata.
 - Detects duplicate active jobs for the same task unless parallel execution is explicit.
 - Includes setup, doctor, offline smoke tests, and npm package hygiene checks.
 - Lets Codex select Claude Code skills per task and grants only the exact `Skill(name)` permissions for that worker invocation.
@@ -71,6 +73,8 @@ Source-mode MCP config:
   }
 }
 ```
+
+After moving the source directory or changing a linked installation, run `npm run mcp:setup` and `npm run mcp:doctor` again. Restart the MCP client afterward; already-running server processes keep the code that they loaded at startup.
 
 Check a GitHub tag without installing globally:
 
@@ -132,6 +136,8 @@ Operational rules:
 - One implementation task should map to one worker job.
 - Keep `allowed_dirs` narrow and `forbidden_paths` explicit.
 - Let Codex choose `required_skills` when a workflow is useful; omit it otherwise. The worker explicitly invokes, only permits, and stages the listed skills in an isolated directory for `--bare` mode discovery.
+- `--bare` workers receive an isolated generated settings file. Selected skills and settings are removed after the worker exits; the user's full Claude settings and skill directory are not added to the worker scope.
+- File and safe read-only Bash hooks resolve existing symlink/junction ancestors before checking `cwd`, `allowed_dirs`, and `forbidden_paths`, so a pre-existing link cannot redirect an approved path outside the workspace.
 - Do not ask for logs, events, or diffs while the job is still running unless you are investigating a specific failure.
 - After terminal status, review changed files, policy output, checks, and the relevant diff.
 - Treat this MCP as a permission boundary helper, not as an OS or container sandbox.
@@ -140,17 +146,31 @@ Operational rules:
 
 Model selection is controlled by CC-Switch routing by default. This MCP leaves `model` unset unless the caller explicitly overrides it.
 
-| `use_case` | Model source | Effort | Async default timeout | Best for |
-| --- | --- | --- | --- | --- |
-| `auto` | CC-Switch route | `max` | none | general implementation |
-| `fast_patch` | CC-Switch route | `high` | 120s | small patches |
-| `simple_agent_task` | CC-Switch route | `high` | 180s | simple agentic coding |
-| `scaffold_or_tests` | CC-Switch route | `high` | 300s | scaffolding, glue code, tests |
-| `debug_loop` | CC-Switch route | `max` | none | reproduce, locate, fix, validate |
-| `agentic_coding` | CC-Switch route | `max` | none | multi-step implementation |
-| `complex_reasoning` | CC-Switch route | `max` | none | architecture and hard logic |
-| `long_context_codebase` | CC-Switch route | `max` | none | broad codebase work |
-| `docs_generation` | CC-Switch route | `high` | none | documentation |
+The `model` input is only a selector passed to Claude Code. CC-Switch may route that selector to another provider, so neither `model` nor result-event `models_used` proves the underlying provider model.
+
+| `use_case` | Model source | Effort | Requested budget limit | Async default timeout | Best for |
+| --- | --- | --- | --- | --- | --- |
+| `auto` | current CC-Switch route | `high` | `$0.50` | none | general implementation |
+| `fast_patch` | current CC-Switch route | `low` | `$0.05` | 120s | small patches |
+| `simple_agent_task` | current CC-Switch route | `medium` | `$0.10` | 180s | simple agentic coding |
+| `scaffold_or_tests` | current CC-Switch route | `medium` | `$0.25` | 300s | scaffolding, glue code, tests |
+| `debug_loop` | current CC-Switch route | `max` | `$1.00` | none | reproduce, locate, fix, validate |
+| `agentic_coding` | current CC-Switch route | `max` | `$1.00` | none | multi-step implementation |
+| `complex_reasoning` | current CC-Switch route | `max` | `$2.00` | none | architecture and hard logic |
+| `long_context_codebase` | current CC-Switch route | `max` | `$1.50` | none | broad codebase work |
+| `docs_generation` | current CC-Switch route | `low` | `$0.10` | none | documentation |
+
+## Cost and Limit Semantics
+
+- `enable_tool_search` defaults to `false`. The server removes an inherited `ENABLE_TOOL_SEARCH` value unless the caller explicitly enables it.
+- `max_budget_usd` is passed to Claude Code as `--max-budget-usd`. Enforcement can happen after a model or tool turn, so `total_cost_usd` can exceed the requested limit. The recorded value is Claude Code result metadata, not a provider invoice.
+- Claude Code can execute a tool before it emits `error_max_budget_usd` or `error_max_turns`. Valid file changes in that state are reported as `partial_worker_limit`; a successful read-only tool with no final text gets a specific `*_after_tool_success` failure reason.
+- Claude Code `2.1.178` exposes `--max-budget-usd` but not `--max-turns`. This server does not present an ignored `max_turns` input as a reliable guard.
+- `partial` is not accepted completion. Review changed files and rerun any missing checks before using the result.
+
+Worker stdout, stderr, and tool-event logs are size-bounded and common credential forms are redacted before persistence. Workspace snapshots skip sensitive and forbidden paths; persisted snapshots contain hashes and metadata, not file bodies. Terminal job directories expire after seven days by default (`CC_SWITCH_WORKER_JOB_TTL_MS` can shorten or extend this). Worker subprocesses inherit only the environment variables required for the runtime, proxy, certificates, and authentication flow.
+
+Redaction and path hooks are defense in depth. Explicit permissive mode, concurrent link replacement, and arbitrary external tools still require a real OS sandbox. Do not place secrets in worker tasks or files.
 
 ## Verification
 

@@ -5,12 +5,14 @@ import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { JOB_ROOT } from "../src/core/config.mjs";
 
-const suffix = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-const runningJobId = `ccsw_diag_running_${suffix}`;
-const orphanJobId = `ccsw_diag_orphan_${suffix}`;
-const cancelOrphanJobId = `ccsw_diag_cancel_orphan_${suffix}`;
-const failedJobId = `ccsw_diag_failed_${suffix}`;
-const partialCompatJobId = `ccsw_diag_partial_${suffix}`;
+const stamp = Date.now().toString(36);
+const random = Math.random().toString(36).slice(2, 8).padEnd(6, "0");
+const suffix = `${stamp}_${random}`;
+const runningJobId = `ccsw_${stamp}r_${random}`;
+const orphanJobId = `ccsw_${stamp}o_${random}`;
+const cancelOrphanJobId = `ccsw_${stamp}c_${random}`;
+const failedJobId = `ccsw_${stamp}f_${random}`;
+const partialCompatJobId = `ccsw_${stamp}p_${random}`;
 const jobIds = [runningJobId, orphanJobId, cancelOrphanJobId, failedJobId, partialCompatJobId];
 const cwd = join(tmpdir(), `cc-switch-worker-diagnostics-${suffix}`);
 const runningPlaceholder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {

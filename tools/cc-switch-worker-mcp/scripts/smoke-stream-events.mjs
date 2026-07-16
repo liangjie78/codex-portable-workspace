@@ -1,4 +1,5 @@
 import {
+  claudeResultMetadata,
   classifyClaudeEvent,
   consumeJsonLines,
   phaseFromClaudeEvent,
@@ -61,6 +62,25 @@ if (parsed.length !== 2 || consumed.remainder !== '{"partial"') {
     expected: "two parsed events plus partial remainder",
     actual: { parsed: parsed.length, remainder: consumed.remainder },
   });
+}
+
+const limitMetadata = claudeResultMetadata({
+  type: "result",
+  subtype: "error_max_budget_usd",
+  is_error: true,
+  result: "",
+  total_cost_usd: 0.397102,
+  num_turns: 2,
+  modelUsage: { "claude-opus-fixture": { costUSD: 0.397102 } },
+});
+if (
+  limitMetadata?.limit_reason !== "budget_exhausted"
+  || limitMetadata?.total_cost_usd !== 0.397102
+  || limitMetadata?.num_turns !== 2
+  || limitMetadata?.final_text_present !== false
+  || !limitMetadata?.models_used?.includes("claude-opus-fixture")
+) {
+  failures.push({ case: "limit result metadata", actual: limitMetadata });
 }
 
 console.log(JSON.stringify({
