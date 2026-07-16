@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
 $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+$claudeCodeVersion = "2.1.178"
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-portable-ci-" + [guid]::NewGuid().ToString("N"))
 
 $parseErrors = [System.Collections.Generic.List[string]]::new()
@@ -25,8 +26,15 @@ if ($LASTEXITCODE -ne 0) { throw "Repository verification failed with exit code 
 & $pwsh -NoProfile -File (Join-Path $RepositoryRoot "scripts\smoke-portable-workspace.ps1")
 if ($LASTEXITCODE -ne 0) { throw "Portable workspace smoke failed with exit code $LASTEXITCODE" }
 
+$previousPath = $env:PATH
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+        $claudeRoot = Join-Path $tempRoot "claude-code"
+        & $npm install --prefix $claudeRoot --no-audit --no-fund "@anthropic-ai/claude-code@$claudeCodeVersion"
+        if ($LASTEXITCODE -ne 0) { throw "Claude Code install failed with exit code $LASTEXITCODE" }
+        $env:PATH = (Join-Path $claudeRoot "node_modules\.bin") + ";" + $env:PATH
+    }
     $workerRoot = Join-Path $tempRoot "worker"
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot "tools\cc-switch-worker-mcp") -Destination $workerRoot -Recurse
     Push-Location $workerRoot
@@ -50,6 +58,7 @@ try {
         Pop-Location
     }
 } finally {
+    $env:PATH = $previousPath
     $resolved = [System.IO.Path]::GetFullPath($tempRoot)
     $prefix = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + [System.IO.Path]::DirectorySeparatorChar
     if ($resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $resolved)) {
