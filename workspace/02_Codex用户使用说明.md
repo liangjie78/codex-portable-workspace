@@ -2,6 +2,48 @@
 
 这份文件给实际使用 Codex 的人看。它不讲配置细节，只说明现在装了什么、平时什么时候用得上。账号、令牌、Cookie、聊天记录和本机知识库内容不写在这里，也不会上传到仓库。下表的“可恢复”只表示仓库能恢复配置、Skill 快照或工具源码；账号授权和本机数据仍需单独配置。
 
+## 当前版本核对
+
+核对时间：2026-07-20。版本只记录本机实际安装状态；没有可靠版本号的 Skill 标为“未声明”。
+
+### 插件
+
+| 来源 | 插件 | 版本 |
+| --- | --- | --- |
+| `openai-bundled` | `browser` | `26.715.31925` |
+| `openai-bundled` | `chrome` | `26.715.31925`（latest 缓存；另保留 `26.602.30954`）|
+| `openai-bundled` | `computer-use` | `26.715.31925` |
+| `openai-bundled` | `sites` | `0.1.30` |
+| `openai-bundled` | `visualize` | `1.0.12` |
+| `openai-curated` | `github`、`hyperframes` | `0.1.1` |
+| `openai-curated-remote` | `github` | `0.1.8-2841cf9749ae` |
+| `openai-curated-remote` | `google-drive` | `0.1.10` |
+| `openai-curated-remote` | `openai-templates` | `0.1.0` |
+| `openai-primary-runtime` | `documents`、`pdf`、`presentations`、`spreadsheets`、`template-creator` | `26.715.12143` |
+| `ponytail` | `ponytail` | `4.8.4` |
+
+OpenAI 相关插件缓存由 Codex 管理，不手工覆盖；Ponytail 当前与 npm/GitHub 最新版一致。
+
+### MCP 与 CLI
+
+| 名称 | 版本 | 备注 |
+| --- | --- | --- |
+| `headroom` | `0.31.0` | 模型路由与用量辅助 |
+| `gitnexus` | `1.6.9` | 代码关系和索引 |
+| `cc-switch-worker` | `0.4.5-rc.1` | doctor 检查通过 |
+| `gbrain` | `0.42.58.0` | 本机知识库服务 |
+| `node_repl` | 未声明 | Codex 内置 JavaScript 运行工具 |
+| `openaiDeveloperDocs` | 未声明 | OpenAI 官方文档连接器 |
+| `claude` | `2.1.215` | Claude Code CLI |
+| `opencli` | `1.8.6` | 本机连接器 CLI |
+| `mcporter` | `0.12.3` | MCP 调试/调用 CLI |
+| `uipro-cli` | `2.2.3` | UI UX Pro Max 安装器 |
+| `omniroute` | `3.8.48` | 本机路由工具 |
+
+### 直接安装 Skills
+
+`ui-ux-pro-max` 的内容发行版为 `v2.11.0`；其余直接安装 Skills 的 `SKILL.md` front matter 未声明版本。Skills 名单和用途见下方表格，更新时以实际目录和上游来源核对为准。
+
 ## 先分清三种东西
 
 - 插件像工具箱。它给 Codex 增加浏览器、文档、GitHub 或云盘这类能力。
