@@ -17,6 +17,9 @@
     "guizang-ppt-skill",
     "hatch-pet"
   ],
+  "local_only_codex_skills": [
+    "video-shotcraft"
+  ],
   "claude_skills": [
     "agent-reach",
     "ui-ux-pro-max",
@@ -35,5 +38,5 @@
     "gitnexus-taint-analysis"
   ],
   "targets": ["codex", "claude", "agents"],
-  "notes": "Only byte-identical Codex and Claude snapshots are shared. Platform-specific variants use skills/codex and skills/claude so restore never overwrites one platform with the other."
+  "notes": "Only byte-identical Codex and Claude snapshots are shared. Platform-specific variants use skills/codex and skills/claude so restore never overwrites one platform with the other. Local-only skills remain installed but are excluded from public portable snapshots."
 }

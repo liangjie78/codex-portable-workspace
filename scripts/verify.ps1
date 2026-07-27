@@ -29,12 +29,16 @@ function Add-SkillCoverageErrors {
     param(
         [Parameter(Mandatory)][string]$Label,
         [Parameter(Mandatory)][string]$SkillsRoot,
-        [Parameter(Mandatory)][string[]]$ExpectedSkills
+        [Parameter(Mandatory)][string[]]$ExpectedSkills,
+        [string[]]$LocalOnlySkills = @()
     )
 
     $actualSkills = @(Get-InstalledSkillNames $SkillsRoot)
     $expected = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($skill in $ExpectedSkills) {
+        [void]$expected.Add($skill)
+    }
+    foreach ($skill in $LocalOnlySkills) {
         [void]$expected.Add($skill)
     }
 
@@ -140,6 +144,7 @@ if (Test-Path -LiteralPath $manifestPath) {
     $manifest = Get-Content -Raw -Encoding UTF8 -LiteralPath $manifestPath | ConvertFrom-Json
     $sharedSkills = @(Get-ManifestList $manifest "shared_skills")
     $codexSkills = @(Get-ManifestList $manifest "codex_skills")
+    $localOnlyCodexSkills = @(Get-ManifestList $manifest "local_only_codex_skills")
     $claudeSkills = @(Get-ManifestList $manifest "claude_skills")
     $agentSkills = @(Get-ManifestList $manifest "agent_skills")
 
@@ -157,7 +162,7 @@ if (Test-Path -LiteralPath $manifestPath) {
     }
 
     if ($AuditInstalledCoverage) {
-        Add-SkillCoverageErrors "Codex" (Join-Path $CodexHome "skills") @($sharedSkills + $codexSkills)
+        Add-SkillCoverageErrors "Codex" (Join-Path $CodexHome "skills") @($sharedSkills + $codexSkills) $localOnlyCodexSkills
         Add-SkillCoverageErrors "Claude" (Join-Path $ClaudeHome "skills") @($sharedSkills + $claudeSkills)
         Add-SkillCoverageErrors "Agents" (Join-Path $AgentsHome "skills") @($agentSkills)
     }
