@@ -4,22 +4,22 @@
 
 ## 当前版本核对
 
-核对时间：2026-07-20。版本只记录本机实际安装状态；没有可靠版本号的 Skill 标为“未声明”。
+核对时间：2026-07-27。版本只记录本机实际安装状态；没有可靠版本号的 Skill 标为“未声明”。
 
 ### 插件
 
 | 来源 | 插件 | 版本 |
 | --- | --- | --- |
-| `openai-bundled` | `browser` | `26.715.31925` |
-| `openai-bundled` | `chrome` | `26.715.31925`（latest 缓存；另保留 `26.602.30954`）|
-| `openai-bundled` | `computer-use` | `26.715.31925` |
-| `openai-bundled` | `sites` | `0.1.30` |
-| `openai-bundled` | `visualize` | `1.0.12` |
+| `openai-bundled` | `browser` | `26.721.41059` |
+| `openai-bundled` | `chrome` | `26.721.41059`（`latest` 元数据；另保留 `26.602.30954`）|
+| `openai-bundled` | `computer-use` | `26.721.41059` |
+| `openai-bundled` | `sites` | `0.1.31` |
+| `openai-bundled` | `visualize` | `1.0.15` |
 | `openai-curated` | `github`、`hyperframes` | `0.1.1` |
 | `openai-curated-remote` | `github` | `0.1.8-2841cf9749ae` |
 | `openai-curated-remote` | `google-drive` | `0.1.10` |
 | `openai-curated-remote` | `openai-templates` | `0.1.0` |
-| `openai-primary-runtime` | `documents`、`pdf`、`presentations`、`spreadsheets`、`template-creator` | `26.715.12143` |
+| `openai-primary-runtime` | `documents`、`pdf`、`presentations`、`spreadsheets`、`template-creator` | `26.723.12215` |
 | `ponytail` | `ponytail` | `4.8.4` |
 
 OpenAI 相关插件缓存由 Codex 管理，不手工覆盖；Ponytail 当前与 npm/GitHub 最新版一致。
@@ -34,15 +34,17 @@ OpenAI 相关插件缓存由 Codex 管理，不手工覆盖；Ponytail 当前与
 | `gbrain` | `0.42.58.0` | 本机知识库服务 |
 | `node_repl` | 未声明 | Codex 内置 JavaScript 运行工具 |
 | `openaiDeveloperDocs` | 未声明 | OpenAI 官方文档连接器 |
-| `claude` | `2.1.215` | Claude Code CLI |
+| `claude` | `2.1.220` | Claude Code CLI |
 | `opencli` | `1.8.6` | 本机连接器 CLI |
 | `mcporter` | `0.12.3` | MCP 调试/调用 CLI |
 | `uipro-cli` | `2.2.3` | UI UX Pro Max 安装器 |
-| `omniroute` | `3.8.48` | 本机路由工具 |
+| `undici` | `8.9.0` | 全局 Node.js HTTP 客户端库，没有独立 CLI |
 
 ### 直接安装 Skills
 
-`ui-ux-pro-max` 的内容发行版为 `v2.11.0`；其余直接安装 Skills 的 `SKILL.md` front matter 未声明版本。Skills 名单和用途见下方表格，更新时以实际目录和上游来源核对为准。
+`ui-ux-pro-max` 的内容发行版为 `v2.11.2`；其余直接安装 Skills 的 `SKILL.md` front matter 未声明版本。Skills 名单和用途见下方表格，更新时以实际目录和上游来源核对为准。
+
+`video-shotcraft` 已登记为本机专用 Skill，不进入公共便携快照。它包含约 169 MB 的视频和音频素材，其中少数音频的来源仍待复核；恢复新机器时需要单独安装。
 
 ## 先分清三种东西
 
@@ -102,6 +104,7 @@ MCP 如果需要账号、网络或本机服务，没连上时会报错或提示�
 | Codex | `hatch-pet` | 创建、修复和检查 Codex 动画宠物资源。|
 | Codex | `receiving-code-review` | 收到代码审查意见后先核实上下文，再决定是否修改。|
 | Codex | `verification-before-completion` | 在提交或宣称完成前运行实际验证，避免把未验证状态当成结果。|
+| Codex | `video-shotcraft` | 用镜头配方、真实页面截图和 Remotion 制作产品视频或单个动效镜头。|
 | Claude Code / `.agents` | `agent-reach` | 从互联网或指定平台获取资料。|
 | `.agents` | `gitnexus-cli`、`gitnexus-guide` | 管理或了解 GitNexus 索引。|
 | `.agents` | `gitnexus-debugging`、`gitnexus-exploring` | 排查问题或追踪代码执行路径。|
