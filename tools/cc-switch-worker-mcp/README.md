@@ -182,6 +182,14 @@ Offline verification does not call the real model gateway:
 npm run mcp:verify:offline
 ```
 
+The benchmark harness has its own fake-launcher smoke test. It exercises MCP
+initialization, job start/wait/cancel, result classification, concurrency, and
+cleanup without making a paid model request:
+
+```bash
+npm run mcp:smoke:benchmark
+```
+
 Focused checks:
 
 ```bash
@@ -196,6 +204,17 @@ Real worker smoke requires Claude Code and a reachable CC-Switch gateway:
 ```bash
 npm run mcp:smoke
 ```
+
+The full reliability benchmark uses real Claude Code workers and is refused
+unless `--confirm-real` is present:
+
+```bash
+node scripts/benchmark-reliability.mjs --confirm-real --runs 1 --concurrent 1
+```
+
+The default three-run benchmark requests up to `$1.35` across its workers.
+Those per-worker budget values are requests, not hard provider billing caps.
+Use `--help` to review the current scenario and budget summary before running it.
 
 ## Release Hygiene
 

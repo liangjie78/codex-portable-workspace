@@ -58,6 +58,7 @@
     "mcp:smoke:context": "node scripts/smoke-context-bootstrap.mjs",
     "mcp:smoke:partial-status": "node scripts/smoke-partial-status.mjs",
     "mcp:smoke:policy-boundary": "node scripts/smoke-policy-boundary.mjs",
+    "mcp:smoke:benchmark": "node scripts/smoke-benchmark-reliability.mjs",
     "mcp:smoke:tools": "node scripts/smoke-tools-list.mjs",
     "mcp:verify:offline": "node scripts/verify-offline.mjs"
   },

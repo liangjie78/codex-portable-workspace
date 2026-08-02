@@ -20,6 +20,7 @@ const offlineSteps = [
   ["mcp:smoke:context", "scripts/smoke-context-bootstrap.mjs", []],
   ["mcp:smoke:partial-status", "scripts/smoke-partial-status.mjs", []],
   ["mcp:smoke:policy-boundary", "scripts/smoke-policy-boundary.mjs", []],
+  ["mcp:smoke:benchmark", "scripts/smoke-benchmark-reliability.mjs", []],
 ];
 
 const results = [];

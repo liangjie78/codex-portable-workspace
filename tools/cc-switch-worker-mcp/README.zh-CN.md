@@ -182,6 +182,13 @@ worker 的 stdout、stderr 和 tool-event 日志有长度上限，常见凭据�
 npm run mcp:verify:offline
 ```
 
+benchmark harness 有独立的 fake launcher smoke test。它会实际走完 MCP
+初始化、job 启动、等待、取消、结果分类、并发限制和清理，但不会发起付费模型请求：
+
+```bash
+npm run mcp:smoke:benchmark
+```
+
 常用单项检查：
 
 ```bash
@@ -196,6 +203,17 @@ npm run mcp:smoke:diagnostics
 ```bash
 npm run mcp:smoke
 ```
+
+完整 reliability benchmark 会启动真实 Claude Code worker。没有
+`--confirm-real` 时，脚本会直接拒绝运行：
+
+```bash
+node scripts/benchmark-reliability.mjs --confirm-real --runs 1 --concurrent 1
+```
+
+默认三轮 benchmark 的 worker 请求预算合计为 `$1.35`。这些值是传给
+Claude Code 的单 worker 预算请求，不是供应商账单的硬上限。运行前可先用
+`--help` 查看当前场景和预算摘要。
 
 ## 发布卫生
 
