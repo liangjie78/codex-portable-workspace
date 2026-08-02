@@ -1938,7 +1938,7 @@ function buildWorkerPrompt(args, allowedRoots, forbiddenPaths) {
     profile.prompt,
     `CC-Switch model target: ${modelTarget}`,
     `Thinking mode: ${args.thinking}; reasoning effort: ${args.reasoning_effort}`,
-    `Claude Code budget limit request: ${args.max_budget_usd == null ? "none" : `$${args.max_budget_usd}`}; enforcement may occur after a model or tool turn; tool search: ${args.enable_tool_search ? "enabled" : "disabled"}`,
+    `Optional Claude CLI compatibility budget: ${args.max_budget_usd == null ? "disabled" : `$${args.max_budget_usd}`}; this is not CC-Switch provider billing and may stop a routed model using Claude's estimate; tool search: ${args.enable_tool_search ? "enabled" : "disabled"}`,
     `Verification profile: ${args.verification_profile}`,
     `Use-case guidance: ${useCase.prompt}`,
     verificationGuidance(args.verification_profile),
@@ -4200,7 +4200,7 @@ function implementationSchema() {
       },
       max_budget_usd: {
         type: "number",
-        description: "Positive budget limit request passed to Claude Code via --max-budget-usd. Defaults from use_case. Enforcement can occur after a model or tool turn, so reported cost may exceed the request and limit results with changes are partial.",
+        description: "Optional Claude CLI compatibility guard passed via --max-budget-usd only when the caller explicitly supplies it. Disabled by default because Claude's estimated USD cost is not CC-Switch provider billing and can prematurely stop a routed model.",
       },
       enable_tool_search: {
         type: "boolean",

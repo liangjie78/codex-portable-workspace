@@ -148,22 +148,24 @@ npx github:YOUR_GITHUB_USERNAME/cc-switch-worker-mcp#v0.4.5-rc.1 --doctor
 
 `model` 参数只是传给 Claude Code 的选择值。CC-Switch 可以把它转到其他供应商，因此 `model` 和 result 事件里的 `models_used` 都不能证明底层供应商模型。
 
-| `use_case` | 模型来源 | Effort | 请求预算限制 | 异步默认超时 | 适合场景 |
+| `use_case` | 模型来源 | Effort | Claude CLI 预算护栏 | 异步默认超时 | 适合场景 |
 | --- | --- | --- | --- | --- | --- |
-| `auto` | 当前 CC-Switch route | `high` | `$0.50` | 无 | 普通实现 |
-| `fast_patch` | 当前 CC-Switch route | `low` | `$0.05` | 120s | 小补丁 |
-| `simple_agent_task` | 当前 CC-Switch route | `medium` | `$0.10` | 180s | 简单 agentic coding |
-| `scaffold_or_tests` | 当前 CC-Switch route | `medium` | `$0.25` | 300s | 脚手架、胶水代码、测试 |
-| `debug_loop` | 当前 CC-Switch route | `max` | `$1.00` | 无 | 复现、定位、修复、验证 |
-| `agentic_coding` | 当前 CC-Switch route | `max` | `$1.00` | 无 | 多步骤实现 |
-| `complex_reasoning` | 当前 CC-Switch route | `max` | `$2.00` | 无 | 架构和复杂逻辑 |
-| `long_context_codebase` | 当前 CC-Switch route | `max` | `$1.50` | 无 | 大上下文代码库 |
-| `docs_generation` | 当前 CC-Switch route | `low` | `$0.10` | 无 | 文档生成 |
+| `auto` | 当前 CC-Switch route | `high` | 默认关闭 | 无 | 普通实现 |
+| `fast_patch` | 当前 CC-Switch route | `low` | 默认关闭 | 120s | 小补丁 |
+| `simple_agent_task` | 当前 CC-Switch route | `medium` | 默认关闭 | 180s | 简单 agentic coding |
+| `scaffold_or_tests` | 当前 CC-Switch route | `medium` | 默认关闭 | 300s | 脚手架、胶水代码、测试 |
+| `debug_loop` | 当前 CC-Switch route | `max` | 默认关闭 | 无 | 复现、定位、修复、验证 |
+| `agentic_coding` | 当前 CC-Switch route | `max` | 默认关闭 | 无 | 多步骤实现 |
+| `complex_reasoning` | 当前 CC-Switch route | `max` | 默认关闭 | 无 | 架构和复杂逻辑 |
+| `long_context_codebase` | 当前 CC-Switch route | `max` | 默认关闭 | 无 | 大上下文代码库 |
+| `docs_generation` | 当前 CC-Switch route | `low` | 默认关闭 | 无 | 文档生成 |
 
 ## 成本和限额语义
 
 - `enable_tool_search` 默认为 `false`。除非调用方明确开启，否则 server 会删除继承的 `ENABLE_TOOL_SEARCH`。
-- `max_budget_usd` 通过 `--max-budget-usd` 传给 Claude Code。检查可能发生在一次模型或工具轮次之后，所以 `total_cost_usd` 可能高于请求值。该字段来自 Claude Code result，不等于供应商账单。
+- 经过 CC-Switch 路由的任务默认不设置 `max_budget_usd`。Claude 的美元估值不是 CC-Switch 供应商账单，可能错误地提前中止底层模型。
+- 调用方仍可明确传入 `max_budget_usd` 作为 Claude CLI 兼容护栏。它会原样传给 `--max-budget-usd`；检查可能滞后一次模型或工具轮次，`total_cost_usd` 仍只是 Claude Code result 元数据。
+- 真正的人民币供应商限额需要 CC-Switch 提供经过认证的账单或余额接口。接口不可用时，本 MCP 不声称能够执行人民币硬上限。
 - Claude Code 可能先执行工具，再发出 `error_max_budget_usd` 或 `error_max_turns`。此时如果已有合规文件变更，状态是 `partial_worker_limit`；只读工具已成功但没有最终文本时，会返回具体的 `*_after_tool_success` 原因。
 - Claude Code `2.1.178` 提供 `--max-budget-usd`，没有公开 `--max-turns`。本 server 不提供一个会被 CLI 忽略的 `max_turns` 参数。
 - `partial` 不是已验收完成。使用结果前必须检查 changed files，并补跑缺失的检查。

@@ -148,22 +148,24 @@ Model selection is controlled by CC-Switch routing by default. This MCP leaves `
 
 The `model` input is only a selector passed to Claude Code. CC-Switch may route that selector to another provider, so neither `model` nor result-event `models_used` proves the underlying provider model.
 
-| `use_case` | Model source | Effort | Requested budget limit | Async default timeout | Best for |
+| `use_case` | Model source | Effort | Claude CLI budget guard | Async default timeout | Best for |
 | --- | --- | --- | --- | --- | --- |
-| `auto` | current CC-Switch route | `high` | `$0.50` | none | general implementation |
-| `fast_patch` | current CC-Switch route | `low` | `$0.05` | 120s | small patches |
-| `simple_agent_task` | current CC-Switch route | `medium` | `$0.10` | 180s | simple agentic coding |
-| `scaffold_or_tests` | current CC-Switch route | `medium` | `$0.25` | 300s | scaffolding, glue code, tests |
-| `debug_loop` | current CC-Switch route | `max` | `$1.00` | none | reproduce, locate, fix, validate |
-| `agentic_coding` | current CC-Switch route | `max` | `$1.00` | none | multi-step implementation |
-| `complex_reasoning` | current CC-Switch route | `max` | `$2.00` | none | architecture and hard logic |
-| `long_context_codebase` | current CC-Switch route | `max` | `$1.50` | none | broad codebase work |
-| `docs_generation` | current CC-Switch route | `low` | `$0.10` | none | documentation |
+| `auto` | current CC-Switch route | `high` | disabled | none | general implementation |
+| `fast_patch` | current CC-Switch route | `low` | disabled | 120s | small patches |
+| `simple_agent_task` | current CC-Switch route | `medium` | disabled | 180s | simple agentic coding |
+| `scaffold_or_tests` | current CC-Switch route | `medium` | disabled | 300s | scaffolding, glue code, tests |
+| `debug_loop` | current CC-Switch route | `max` | disabled | none | reproduce, locate, fix, validate |
+| `agentic_coding` | current CC-Switch route | `max` | disabled | none | multi-step implementation |
+| `complex_reasoning` | current CC-Switch route | `max` | disabled | none | architecture and hard logic |
+| `long_context_codebase` | current CC-Switch route | `max` | disabled | none | broad codebase work |
+| `docs_generation` | current CC-Switch route | `low` | disabled | none | documentation |
 
 ## Cost and Limit Semantics
 
 - `enable_tool_search` defaults to `false`. The server removes an inherited `ENABLE_TOOL_SEARCH` value unless the caller explicitly enables it.
-- `max_budget_usd` is passed to Claude Code as `--max-budget-usd`. Enforcement can happen after a model or tool turn, so `total_cost_usd` can exceed the requested limit. The recorded value is Claude Code result metadata, not a provider invoice.
+- Provider-routed jobs do not set `max_budget_usd` by default. Claude's estimated USD cost is not CC-Switch provider billing and can prematurely stop a routed model.
+- A caller may explicitly supply `max_budget_usd` as a Claude CLI compatibility guard. It is passed through as `--max-budget-usd`; enforcement can happen after a model or tool turn, and `total_cost_usd` remains Claude Code result metadata rather than a provider invoice.
+- A real CNY provider cap requires an authenticated CC-Switch billing or balance API. This MCP does not claim to enforce one while that API is unavailable.
 - Claude Code can execute a tool before it emits `error_max_budget_usd` or `error_max_turns`. Valid file changes in that state are reported as `partial_worker_limit`; a successful read-only tool with no final text gets a specific `*_after_tool_success` failure reason.
 - Claude Code `2.1.178` exposes `--max-budget-usd` but not `--max-turns`. This server does not present an ignored `max_turns` input as a reliable guard.
 - `partial` is not accepted completion. Review changed files and rerun any missing checks before using the result.

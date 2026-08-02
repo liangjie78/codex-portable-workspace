@@ -52,23 +52,25 @@ enable_tool_search: false（除非任务确实需要动态发现工具）
 
 本机 CC-Switch 当前把 Claude Code 请求路由到 DeepSeek V4。worker 默认不传 `--model`，保留 CC-Switch 当前路由。`model` 参数以及 Claude result 中的 `models_used` 只是 CLI/gateway 回报的选择值，不能据此认定底层供应商模型。没有单独验证路由映射前，不要用 `haiku`、`sonnet` 或 `opus` 猜测成本或供应商。
 
-默认成本控制：
+默认执行控制：
 
 | `use_case` | Effort | `max_budget_usd` | 异步超时 |
 |---|---:|---:|---:|
-| `fast_patch` | `low` | `0.05` | 120 秒 |
-| `simple_agent_task` | `medium` | `0.10` | 180 秒 |
-| `scaffold_or_tests` | `medium` | `0.25` | 300 秒 |
-| `auto` | `high` | `0.50` | 调用方按需设置 |
-| `debug_loop` / `agentic_coding` | `max` | `1.00` | 调用方按需设置 |
-| `long_context_codebase` | `max` | `1.50` | 调用方按需设置 |
-| `complex_reasoning` | `max` | `2.00` | 调用方按需设置 |
+| `fast_patch` | `low` | 默认不传 | 120 秒 |
+| `simple_agent_task` | `medium` | 默认不传 | 180 秒 |
+| `scaffold_or_tests` | `medium` | 默认不传 | 300 秒 |
+| `auto` | `high` | 默认不传 | 调用方按需设置 |
+| `debug_loop` / `agentic_coding` | `max` | 默认不传 | 调用方按需设置 |
+| `long_context_codebase` | `max` | 默认不传 | 调用方按需设置 |
+| `complex_reasoning` | `max` | 默认不传 | 调用方按需设置 |
 
-- 低风险检查优先 `fast_patch` 或 `simple_agent_task`，不要只因默认路由可用就使用高 effort 和大预算。
+- 低风险检查优先 `fast_patch` 或 `simple_agent_task`，不要只因默认路由可用就使用高 effort。
 - `ENABLE_TOOL_SEARCH=true` 会先消耗 ToolSearch 轮次。worker 默认删除继承值；只有任务需要动态发现工具时才显式设置 `enable_tool_search: true`。
 - Claude Code `2.1.178` 公开 `--max-budget-usd`，未公开 `--max-turns`。实测未知 `--max-turns` 会被静默忽略，因此不得把它作为护栏。
-- `max_budget_usd` 是传给 Claude Code 的限制请求，不是严格硬上限。检查可能滞后到一次模型或工具轮次之后，回报成本可以高于请求值。
+- CC-Switch 路由到 DeepSeek 等其他供应商时，不默认传 `max_budget_usd`。Claude 的美元估值不是供应商账单，可能错误地提前中止底层模型。
+- 只有用户明确要求 Claude CLI 兼容护栏时才传 `max_budget_usd`；不得把它换算成人民币或描述为真实费用。
 - `total_cost_usd` 是 Claude Code result 事件的回报值，不是 CC-Switch/DeepSeek 的最终账单。记录时同时保留 use case、effort、预算、ToolSearch、turns 和 result subtype。
+- 真正的人民币硬限额必须由 CC-Switch 提供经过认证的账单或余额接口；接口不可用时不得声称已经实现“每次 5 元”。
 - 预算检查可能发生在工具执行之后。已成功调用工具但没有最终文本时，不能直接归为普通失败。
 
 ## 任务说明

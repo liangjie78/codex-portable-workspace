@@ -101,12 +101,12 @@ try {
 
   assertEqual(failures, "fast patch keeps CC-Switch route", started.model, null);
   assertEqual(failures, "fast patch effort", started.reasoning_effort, "low");
-  assertEqual(failures, "fast patch budget", started.max_budget_usd, 0.05);
-  assertEqual(failures, "budget source", started.budget_source, "use_case:fast_patch");
+  assertEqual(failures, "provider-routed jobs do not apply a default Claude CLI budget", started.max_budget_usd, null);
+  assertEqual(failures, "budget source", started.budget_source, "none");
   assertEqual(failures, "tool search disabled by default", started.enable_tool_search, false);
   assertArgAbsent(failures, args, "--model");
   assertArgValue(failures, args, "--effort", "low");
-  assertArgValue(failures, args, "--max-budget-usd", "0.05");
+  assertArgAbsent(failures, args, "--max-budget-usd");
   assertEqual(failures, "inherited ToolSearch env removed", capture.enableToolSearch, null);
   assertEqual(failures, "job status", waited.status, "partial");
   assertEqual(failures, "result status", waited.result?.status, "partial_worker_limit");
@@ -129,6 +129,31 @@ try {
     name: "cc_switch_start_implementation",
     arguments: {
       cwd,
+      task: "Apply one patch with an explicit Claude CLI compatibility guard.",
+      use_case: "fast_patch",
+      worker_profile: "scoped_patch",
+      allowed_dirs: ["index.js"],
+      claude_cc_switch_bin: fakeLauncher,
+      max_budget_usd: 0.05,
+      timeout_ms: 5000,
+    },
+  });
+  const explicitBudgetStarted = parseToolPayload(await waitForResponseId(4, 5000));
+  if (explicitBudgetStarted.job_dir) jobDirsToRemove.push(explicitBudgetStarted.job_dir);
+  send(5, "tools/call", {
+    name: "cc_switch_wait_for_job",
+    arguments: { job_id: explicitBudgetStarted.job_id, max_wait_ms: 5000, poll_interval_ms: 25 },
+  });
+  await waitForResponseId(5, 7000);
+  const explicitCapture = existsSync(capturePath) ? JSON.parse(readFileSync(capturePath, "utf8")) : {};
+  assertEqual(failures, "explicit Claude CLI budget is preserved", explicitBudgetStarted.max_budget_usd, 0.05);
+  assertEqual(failures, "explicit budget source", explicitBudgetStarted.budget_source, "caller");
+  assertArgValue(failures, explicitCapture.args ?? [], "--max-budget-usd", "0.05");
+
+  send(6, "tools/call", {
+    name: "cc_switch_start_implementation",
+    arguments: {
+      cwd,
       task: "Run one read-only GBrain verification.",
       use_case: "simple_agent_task",
       worker_profile: "review",
@@ -136,13 +161,13 @@ try {
       timeout_ms: 5000,
     },
   });
-  const readOnlyStarted = parseToolPayload(await waitForResponseId(4, 5000));
+  const readOnlyStarted = parseToolPayload(await waitForResponseId(6, 5000));
   if (readOnlyStarted.job_dir) jobDirsToRemove.push(readOnlyStarted.job_dir);
-  send(5, "tools/call", {
+  send(7, "tools/call", {
     name: "cc_switch_wait_for_job",
     arguments: { job_id: readOnlyStarted.job_id, max_wait_ms: 5000, poll_interval_ms: 25 },
   });
-  const readOnlyWaited = parseToolPayload(await waitForResponseId(5, 7000));
+  const readOnlyWaited = parseToolPayload(await waitForResponseId(7, 7000));
   assertEqual(failures, "read-only limit remains terminal", readOnlyWaited.status, "failed");
   assertEqual(failures, "read-only tool success gets specific reason", readOnlyWaited.result?.failure_reason, "turn_limit_after_tool_success");
   assertEqual(failures, "read-only final text absent", readOnlyWaited.result?.worker?.final_text_present, false);
