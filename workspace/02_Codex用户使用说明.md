@@ -2,47 +2,9 @@
 
 这份文件给实际使用 Codex 的人看。它不讲配置细节，只说明现在装了什么、平时什么时候用得上。账号、令牌、Cookie、聊天记录和本机知识库内容不写在这里，也不会上传到仓库。下表的“可恢复”只表示仓库能恢复配置、Skill 快照或工具源码；账号授权和本机数据仍需单独配置。
 
-## 当前版本核对
+## 当前状态入口
 
-核对时间：2026-07-27。版本只记录本机实际安装状态；没有可靠版本号的 Skill 标为“未声明”。
-
-### 插件
-
-| 来源 | 插件 | 版本 |
-| --- | --- | --- |
-| `openai-bundled` | `browser` | `26.721.41059` |
-| `openai-bundled` | `chrome` | `26.721.41059`（`latest` 元数据；另保留 `26.602.30954`）|
-| `openai-bundled` | `computer-use` | `26.721.41059` |
-| `openai-bundled` | `sites` | `0.1.31` |
-| `openai-bundled` | `visualize` | `1.0.15` |
-| `openai-curated` | `github`、`hyperframes` | `0.1.1` |
-| `openai-curated-remote` | `github` | `0.1.8-2841cf9749ae` |
-| `openai-curated-remote` | `google-drive` | `0.1.10` |
-| `openai-curated-remote` | `openai-templates` | `0.1.0` |
-| `openai-primary-runtime` | `documents`、`pdf`、`presentations`、`spreadsheets`、`template-creator` | `26.723.12215` |
-| `ponytail` | `ponytail` | `4.8.4` |
-
-OpenAI 相关插件缓存由 Codex 管理，不手工覆盖；Ponytail 当前与 npm/GitHub 最新版一致。
-
-### MCP 与 CLI
-
-| 名称 | 版本 | 备注 |
-| --- | --- | --- |
-| `headroom` | `0.31.0` | 模型路由与用量辅助 |
-| `gitnexus` | `1.6.9` | 代码关系和索引 |
-| `cc-switch-worker` | `0.4.5-rc.1` | doctor 检查通过 |
-| `gbrain` | `0.42.58.0` | 本机知识库服务 |
-| `node_repl` | 未声明 | Codex 内置 JavaScript 运行工具 |
-| `openaiDeveloperDocs` | 未声明 | OpenAI 官方文档连接器 |
-| `claude` | `2.1.220` | Claude Code CLI |
-| `opencli` | `1.8.6` | 本机连接器 CLI |
-| `mcporter` | `0.12.3` | MCP 调试/调用 CLI |
-| `uipro-cli` | `2.2.3` | UI UX Pro Max 安装器 |
-| `undici` | `8.9.0` | 全局 Node.js HTTP 客户端库，没有独立 CLI |
-
-### 直接安装 Skills
-
-`ui-ux-pro-max` 的内容发行版为 `v2.11.2`；其余直接安装 Skills 的 `SKILL.md` front matter 未声明版本。Skills 名单和用途见下方表格，更新时以实际目录和上游来源核对为准。
+本机工具、插件、MCP 与 Skill 的详细版本、路径和验证记录只在 `{{WORKSPACE_ROOT}}\00_本机环境与工具清单.md` 维护。本文件只保留面向使用者的用途说明，避免两处版本表互相漂移。
 
 `video-shotcraft` 已登记为本机专用 Skill，不进入公共便携快照。它包含约 169 MB 的视频和音频素材，其中少数音频的来源仍待复核；恢复新机器时需要单独安装。
 
@@ -58,15 +20,13 @@ OpenAI 相关插件缓存由 Codex 管理，不手工覆盖；Ponytail 当前与
 
 | 插件来源 | 已安装插件 | 大白话说明 | 可恢复 |
 | --- | --- | --- |
-| `openai-bundled` | `browser`、`chrome`、`computer-use` | 操作 Codex 内置浏览器、Chrome 或 Windows 应用。| 随 Codex 或插件安装，不由本仓库复制。|
-| `openai-bundled` | `sites`、`visualize` | 搭网站，或把想法和数据做成可交互图表、小工具。| 随 Codex 或插件安装，不由本仓库复制。|
-| `openai-curated` | `github` | 看仓库、PR、Issue 和 CI；需要写入时会走 GitHub 授权。| 插件需安装；GitHub 授权不可恢复。|
-| `openai-curated` | `hyperframes` | 用 HTML、动画和字幕做视频。| 插件需安装，不复制其运行缓存。|
-| `openai-curated-remote` | `github`、`google-drive` | 通过已连接账号处理 GitHub，或操作 Drive、Docs、Sheets、Slides。| 插件需安装；连接账号不可恢复。|
-| `openai-curated-remote` | `openai-templates` | 提供文档、表格和演示文稿的默认模板。| 插件需安装，不复制缓存。|
+| `openai-bundled` | `browser`、`computer-use`、`visualize` | 操作 Codex 内置浏览器或 Windows 应用；把想法和数据做成可交互图表、小工具。| 随 Codex 或插件安装，不由本仓库复制。|
 | `openai-primary-runtime` | `documents`、`pdf`、`presentations` | 创建、修改和检查 Word、PDF、PowerPoint 一类文件。| 随 Codex 或插件安装，不由本仓库复制。|
 | `openai-primary-runtime` | `spreadsheets`、`template-creator` | 处理 Excel/CSV，或把现有文件整理成可复用模板。| 随 Codex 或插件安装，不由本仓库复制。|
+| `openai-curated` | `superpowers` | 一套按需启用的工程方法技能（写计划、TDD、验证后再宣称完成等）；默认不自动触发。| 插件需安装，不复制其运行缓存。|
 | `ponytail` | `ponytail` | 提醒 Codex 少造轮子：能用现成能力解决就别写一大套新代码。| 插件需安装，不复制其缓存。|
+
+缓存里还保留着已下载但未启用的插件（`chrome`、`github`、`hyperframes`），它们不会参与对话；需要时先在 Codex 里启用再使用。
 
 插件是 Codex 程序的一部分，仓库会记录这份说明和可迁移的配置/技能，不会复制登录状态或个人授权。
 
@@ -105,7 +65,9 @@ MCP 如果需要账号、网络或本机服务，没连上时会报错或提示�
 | Codex | `receiving-code-review` | 收到代码审查意见后先核实上下文，再决定是否修改。|
 | Codex | `verification-before-completion` | 在提交或宣称完成前运行实际验证，避免把未验证状态当成结果。|
 | Codex | `video-shotcraft` | 用镜头配方、真实页面截图和 Remotion 制作产品视频或单个动效镜头。|
-| Claude Code / `.agents` | `agent-reach` | 从互联网或指定平台获取资料。|
+| Codex | `pua` | 任务反复失败、换思路受阻或准备放弃时，穷尽一切可用方案再下结论。|
+| Codex | `vibehub` | 识别 UI、网页、软件、Git、AI Agent 和设计术语并给出通俗解释；把口语需求改写成准确提示词时使用。|
+| Codex / Claude Code / `.agents` | `agent-reach` | 从互联网或指定平台获取资料；Codex 目录下是到 `.cc-switch/skills` 的同一份软链接。|
 | `.agents` | `gitnexus-cli`、`gitnexus-guide` | 管理或了解 GitNexus 索引。|
 | `.agents` | `gitnexus-debugging`、`gitnexus-exploring` | 排查问题或追踪代码执行路径。|
 | `.agents` | `gitnexus-impact-analysis`、`gitnexus-pr-review` | 评估改动影响或审查 PR。|
