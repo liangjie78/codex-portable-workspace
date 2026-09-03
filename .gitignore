@@ -1,38 +1,33 @@
-# Authentication and secrets
-auth.json
-*.token
-*.key
-*.pem
+# Local operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Credentials and private configuration
 .env
 .env.*
-secrets/
-credentials/
+!.env.example
+auth.json
+**/auth.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
 
-# Machine and runtime state
-config.local.toml
-*.local.md
-logs/
-jobs/
-sessions/
-history/
-cache/
-.cache/
-tmp/
-temp/
-
-# Generated/runtime files
+# Runtime and machine state
 node_modules/
-__pycache__/
-*.pyc
-*.pyo
+**/node_modules/
+*.sqlite
+*.sqlite3
+*.db
+*.log
 coverage/
 dist/
 build/
-*.log
+.cache/
 .portable-backup-*
-
-# Editors and OS
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
+portable-install-inventory.json

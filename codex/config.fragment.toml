@@ -1,0 +1,7 @@
+# Current Codex setting managed by this repository.
+# The installer changes only this [desktop] key and preserves all other config.
+[desktop]
+runCodexInWindowsSubsystemForLinux = true
+
+# The integrated terminal is independent from the agent environment and is
+# intentionally left unchanged by the installer.

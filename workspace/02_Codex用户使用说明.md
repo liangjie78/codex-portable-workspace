@@ -1,85 +1,48 @@
 # Codex 用户使用说明
 
-这份文件给实际使用 Codex 的人看。它不讲配置细节，只说明现在装了什么、平时什么时候用得上。账号、令牌、Cookie、聊天记录和本机知识库内容不写在这里，也不会上传到仓库。下表的“可恢复”只表示仓库能恢复配置、Skill 快照或工具源码；账号授权和本机数据仍需单独配置。
+这份文件只说明当前工作区的使用方式。Codex 的账号、认证、会话历史和内置组件由用户级 Codex 管理，不放在 `{{WORKSPACE_ROOT}}` 或公开仓库中。
 
-## 当前状态入口
+## 工作区定位
 
-本机工具、插件、MCP 与 Skill 的详细版本、路径和验证记录只在 `{{WORKSPACE_ROOT}}\00_本机环境与工具清单.md` 维护。本文件只保留面向使用者的用途说明，避免两处版本表互相漂移。
+- `{{WORKSPACE_ROOT}}` 是唯一正式 Codex 工作区。
+- 长期任务放入 `{{WORKSPACE_ROOT}}/Projects/` 下的独立项目。
+- 简单问题和一次性操作不必创建项目。
+- 进入工作区后，Codex 会先遵循根目录 `AGENTS.md`。
 
-`video-shotcraft` 已登记为本机专用 Skill，不进入公共便携快照。它包含约 169 MB 的视频和音频素材，其中少数音频的来源仍待复核；恢复新机器时需要单独安装。
+## 当前运行方式
 
-## 先分清三种东西
+- Codex 智能体默认在 WSL2 Ubuntu + Bash 中运行。
+- 集成终端 Shell 可以独立设置；终端显示 PowerShell 不代表智能体回到了 Windows 原生环境。
+- 只有明确需要 Windows 服务、注册表、Windows 应用或 PowerShell 专属命令时，才使用 PowerShell 7。
+- `docker-desktop` 是 Docker 的内部发行版，不是项目开发环境。
 
-- 插件像工具箱。它给 Codex 增加浏览器、文档、GitHub 或云盘这类能力。
-- Skill 像一份操作手册。遇到某类任务时，Codex 会按它的步骤做事。
-- MCP 像一条接线。它让 Codex 能调用本机或已连接服务的工具。
+## 插件、MCP 与 Skill
 
-装着不等于每次都会用。Codex 会按你的问题选择；你也可以直接说出想用的名称。
+- 插件像工具箱，提供浏览器、文档、图片、表格或其他能力。
+- Skill 像按任务触发的操作手册。
+- MCP 像连接本机或外部服务的接口。
+- “已安装”不等于“每次都会使用”；Codex 会按任务和当前可用性选择。
+- 账号授权、MCP 登录、Skill 缓存和本机服务需要在每台机器上单独配置。
 
-## 现在装了哪些插件
+## 推荐的任务描述
 
-| 插件来源 | 已安装插件 | 大白话说明 | 可恢复 |
-| --- | --- | --- |
-| `openai-bundled` | `browser`、`computer-use`、`visualize` | 操作 Codex 内置浏览器或 Windows 应用；把想法和数据做成可交互图表、小工具。| 随 Codex 或插件安装，不由本仓库复制。|
-| `openai-primary-runtime` | `documents`、`pdf`、`presentations` | 创建、修改和检查 Word、PDF、PowerPoint 一类文件。| 随 Codex 或插件安装，不由本仓库复制。|
-| `openai-primary-runtime` | `spreadsheets`、`template-creator` | 处理 Excel/CSV，或把现有文件整理成可复用模板。| 随 Codex 或插件安装，不由本仓库复制。|
-| `openai-curated` | `superpowers` | 一套按需启用的工程方法技能（写计划、TDD、验证后再宣称完成等）；默认不自动触发。| 插件需安装，不复制其运行缓存。|
-| `ponytail` | `ponytail` | 提醒 Codex 少造轮子：能用现成能力解决就别写一大套新代码。| 插件需安装，不复制其缓存。|
+开始任务时尽量说明：
 
-缓存里还保留着已下载但未启用的插件（`chrome`、`github`、`hyperframes`），它们不会参与对话；需要时先在 Codex 里启用再使用。
+1. 要达到的结果。
+2. 目标项目或文件路径。
+3. 不需要修改的范围。
+4. 验收标准或验证方式。
 
-插件是 Codex 程序的一部分，仓库会记录这份说明和可迁移的配置/技能，不会复制登录状态或个人授权。
+例如：
 
-## 现在可用的 MCP
+```text
+在 {{WORKSPACE_ROOT}}/Projects/Project-001-example 中实现这个功能，保持现有接口不变，完成后运行项目测试并报告结果。
+```
 
-| 名称 | 它能做什么 | 可恢复 |
-| --- | --- |
-| `node_repl` | 运行一小段 JavaScript，常用于浏览器自动化或验证网页。| 本机功能，不随仓库恢复。|
-| `headroom` | 本机的模型路由与用量辅助服务。它只影响调用路线，不保存你的对话内容到仓库。| 需按机器单独安装和配置。|
-| `gitnexus` | 帮 Codex 理解代码仓库结构，例如查调用链、影响范围和依赖关系。| 需按机器安装和索引仓库。|
-| `gbrain` | 管理本机记忆检索与维护。| 必须按机器单独配置；不复制数据库、Vault、索引或 OAuth 凭据。|
-| `cc-switch-worker` | 让 Codex 在边界清楚的任务里调用受限 worker 执行代码工作；最终结果仍由当前 Codex 任务检查。| 工具源码和配置模板可恢复；worker 登录与任务不可恢复。|
-| `openaiDeveloperDocs` | 查询 OpenAI 官方开发文档，适合确认 API、模型或产品的最新用法。| 配置模板可恢复；网络访问按机器可用性决定。|
+## 文件与安全
 
-MCP 如果需要账号、网络或本机服务，没连上时会报错或提示授权。这通常不是 Codex 坏了，先看提示里缺的是登录、服务还是网络。
-
-## Skills：遇到什么事找谁
-
-这些 Skill 已安装在 Codex、Claude Code 或 `.agents` 的对应目录。`skills/manifest.json` 登记的 Skill 快照会随仓库恢复，运行时缓存不会。Codex 内置 Skill 随 Codex 安装；插件提供的 Skill 随对应插件安装。
-
-| 类别 | Skill | 用途 |
-| --- | --- | --- |
-| Codex 内置 | `imagegen`、`openai-docs` | 生成或修改位图，或查询 OpenAI 官方文档。|
-| Codex 内置 | `plugin-creator`、`skill-creator`、`skill-installer` | 创建、维护或安装 Codex 插件和 Skill。|
-| 通用 | `humanizer-zh` | 把面向人的中文说明改得自然、直接。|
-| 通用 | `tdd` | 需要先写测试再实现时使用。|
-| 通用 | `diagnosing-bugs` | 排查报错、性能慢或行为异常。|
-| 通用 | `codebase-design` | 设计或整理模块边界。|
-| 通用 | `ui-ux-pro-max` | 做界面和用户体验决策。|
-| 通用 | `guizang-ppt-skill` | 制作横向翻页的网页演示稿。|
-| Codex | `bs` | 在改功能前先确认需求和方案。|
-| Codex | `design-md` | 维护项目的 `DESIGN.md`。|
-| Codex | `open-design` | 选择视觉规范和设计模板。|
-| Codex | `playwright` | 用真实浏览器检查网页或自动化操作。|
-| Codex | `hatch-pet` | 创建、修复和检查 Codex 动画宠物资源。|
-| Codex | `receiving-code-review` | 收到代码审查意见后先核实上下文，再决定是否修改。|
-| Codex | `verification-before-completion` | 在提交或宣称完成前运行实际验证，避免把未验证状态当成结果。|
-| Codex | `video-shotcraft` | 用镜头配方、真实页面截图和 Remotion 制作产品视频或单个动效镜头。|
-| Codex | `pua` | 任务反复失败、换思路受阻或准备放弃时，穷尽一切可用方案再下结论。|
-| Codex | `vibehub` | 识别 UI、网页、软件、Git、AI Agent 和设计术语并给出通俗解释；把口语需求改写成准确提示词时使用。|
-| Codex / Claude Code / `.agents` | `agent-reach` | 从互联网或指定平台获取资料；Codex 目录下是到 `.cc-switch/skills` 的同一份软链接。|
-| `.agents` | `gitnexus-cli`、`gitnexus-guide` | 管理或了解 GitNexus 索引。|
-| `.agents` | `gitnexus-debugging`、`gitnexus-exploring` | 排查问题或追踪代码执行路径。|
-| `.agents` | `gitnexus-impact-analysis`、`gitnexus-pr-review` | 评估改动影响或审查 PR。|
-| `.agents` | `gitnexus-pdg-query`、`gitnexus-taint-analysis` | 追踪条件、数据流和安全风险。|
-| `.agents` | `gitnexus-refactoring` | 安全地改名、拆分或移动代码。|
-
-## 新装东西后怎么做
-
-新装插件、Skill 或 MCP 后，不需要手工复制目录到仓库。下次“每周同步 Codex 配置仓库”任务会先检查本机状态：
-
-1. 更新这份说明，写清它是什么、怎么用、能不能恢复。
-2. 新 Skill 会被覆盖面审计发现。按提示把它加入 `skills/manifest.json` 后，备份脚本才会复制它。
-3. MCP、插件或工具只有在不含凭据且适合迁移时才会进入仓库；否则只保留这里的说明。
-
-如果你要立刻同步，可在 `{{WORKSPACE_ROOT}}\Projects\Project-008-Codex-Portable-Workspace\03_Source` 运行 `pwsh -NoProfile -File .\scripts\backup.ps1`，再运行 `pwsh -NoProfile -File .\scripts\verify.ps1 -CheckInstalled -AuditInstalledCoverage`。
+- 不把密钥、密码、Token、Cookie、认证文件和聊天记录放入工作区。
+- 不把临时下载物、缓存和无关备份放到工作区根目录。
+- 需要长期保存的源码、素材、输出和日志都放入对应项目目录。
+- VPN、DNS 或代理改变后，不要为了消除提示覆盖现有配置；先运行诊断并记录现象。
+- 任务结束时，Codex 应报告实际完成内容和验证结果，不把未验证状态当作完成。

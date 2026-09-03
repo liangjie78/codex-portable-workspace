@@ -2,19 +2,23 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  verify:
-    runs-on: windows-latest
-    timeout-minutes: 20
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: tools/cc-switch-worker-mcp/package-lock.json
-      - name: Run portable and Worker checks
-        shell: pwsh
-        run: pwsh -NoProfile -File .\scripts\ci.ps1
+          python-version: '3.x'
+      - name: Run Bash CI
+        run: bash scripts/ci.sh

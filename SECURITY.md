@@ -1,42 +1,19 @@
-# Security Policy
+# 安全策略
 
-This repository contains portable workspace configuration, installation scripts, skill snapshots, and MCP tool source code for a Windows Codex/Claude Code setup.
+这是一个公开仓库，只接受不含私密数据的配置、文档和脚本。
 
-## Supported Usage
+## 禁止提交
 
-The public repository is intended to store portable, reviewable files only. It must not contain local authentication state, tokens, cookies, machine caches, chat/session history, worker job data, or private machine memory data.
+- 密码、API key、token、Cookie、私钥和认证文件。
+- `.env`、会话、缓存、日志、数据库、任务快照和完整本机配置。
+- 含用户名、项目目录、内部域名或服务地址的机器私有导出。
 
-Before running the installation scripts on a new machine, read the script changes and adjust paths for your own environment.
+## 报告疑似泄露
 
-## Sensitive Data
+不要在公开 Issue 或 Pull Request 中粘贴密钥或完整日志。若发现疑似凭据，请立即在本机撤销或轮换，并通过 GitHub 私密安全渠道联系仓库维护者。
 
-Do not commit or paste:
+提交前运行：
 
-- `.codex\auth.json`
-- `.env` or `.env.*`
-- API keys, access tokens, refresh tokens, cookies, or passwords
-- private keys or certificates
-- production service URLs with credentials
-- local logs, caches, sessions, worker jobs, or machine memory files
-
-Use `templates/local-secrets.example.ps1` as a shape-only example, then keep any populated secrets file outside the repository.
-
-## Reporting a Vulnerability
-
-If you find a secret exposure or security-sensitive issue, do not open a public issue containing the secret value. Contact the repository owner privately through GitHub profile contact options, or open a minimal public issue that describes the affected file path and risk without including the secret itself.
-
-After any accidental exposure, rotate the affected secret immediately. Removing it from the latest commit is not enough if it was already pushed to GitHub history.
-
-## Local Verification
-
-Run the repository verification before pushing changes:
-
-```powershell
-.\scripts\verify.ps1
-```
-
-For installed-machine coverage checks, run:
-
-```powershell
-.\scripts\verify.ps1 -CheckInstalled -AuditInstalledCoverage
+```bash
+bash scripts/verify.sh
 ```
